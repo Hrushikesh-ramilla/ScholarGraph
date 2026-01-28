@@ -17,12 +17,11 @@ from app.agent.prompts import (
 from pydantic import BaseModel, Field
 import logging
 from app.agent.states import State
-from app.agent.utils import get_user_query, setup_tracing
+from app.agent.utils import get_user_query
 
 logger = logging.getLogger(__name__)
-setup_tracing()
-paper_finder_model = init_chat_model(model=settings.MODEL_NAME, api_key=settings.OPENAI_API_KEY)
 
+paper_finder_model = init_chat_model(model=settings.MODEL_NAME, api_key=settings.OPENAI_API_KEY)
 
 class QueryGeneration(BaseModel):
     """Structured output for query generation."""
