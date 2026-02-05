@@ -1,15 +1,11 @@
 from langchain.tools import tool, ToolRuntime
-from langgraph.prebuilt import InjectedState
-from typing import List, Dict, Any, Optional, Annotated
-from app.db.models import Paper
-from app.db.session import AsyncSessionLocal
-from app.services.elasticsearch import ElasticsearchService
+from typing import List, Optional
 from app.services.qdrant import QdrantService
 from app.services.s2_client import S2Client
 from app.core.config import settings
 from pydantic import BaseModel, Field
 from langgraph.types import Command
-from app.db.schema import S2Paper
+from app.core.schema import S2Paper
 from langchain_tavily import TavilySearch
 from app.agent.utils import get_paper_info_text
 from langchain_core.documents import Document
@@ -18,6 +14,7 @@ from pydantic import ConfigDict
 from langchain.chat_models import init_chat_model
 from langchain.messages import SystemMessage, HumanMessage
 from typing import Literal
+from app.agent.utils import get_paper_abstract
 
 filter_model = init_chat_model(model=settings.AGENT_MODEL_NAME, api_key=settings.OPENAI_API_KEY)
 
@@ -63,13 +60,6 @@ def llm_document_filter_batch(evds: List[Document], query: str, abstracts: str, 
         index_to_keep = [int(decision) + i for decision in llm_document_filter_response.decisions]
         results.extend(index_to_keep)
     return results
-
-def get_paper_abstract(papers: List[S2Paper], selected_paper_ids: List[str]) -> Dict[str, str]:
-    abstracts = {}
-    for paper in papers:
-        if paper.paperId in selected_paper_ids:
-            abstracts[paper.paperId] = paper.abstract
-    return abstracts
 
 
 @tool

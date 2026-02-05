@@ -4,16 +4,15 @@ from langgraph.graph import START, END, StateGraph
 from langgraph.prebuilt import ToolNode
 from app.tools.search import s2_search_papers, tavily_research_overview, get_paper_details, forward_snowball, backward_snowball
 from app.core.config import settings
-from app.agent.utils import setup_langsmith
+from app.core.config import settings
 from rerankers import Reranker, Document
-from app.db.schema import S2Paper
+from app.core.schema import S2Paper
 from pydantic import BaseModel
 from typing import List, Annotated
 from langchain.agents import AgentState
 from langgraph.prebuilt import tools_condition
 
 
-setup_langsmith()
 MAX_PAPER_LIST_LENGTH = 20
 
 model = init_chat_model(model=settings.AGENT_MODEL_NAME, api_key=settings.GEMINI_API_KEY)
@@ -73,10 +72,12 @@ def search_agent_node(state: SearchAgentState):
     4. Paper details (get_paper_details): Check what papers are currently in your paper list.
     
     Strategy tips:
-    - Start with web search if topic is unfamiliar to get context
-    - Use academic database for targeted searches with filters
-    - Use citation chasing to expand from good seed papers you've found
-    - Check paper details to avoid redundant searches
+    - If the user query is about a specific paper, use the academic database search with the title/author filters to find the paper and quickly finish the task.
+    - If the user query is more general, you should follow the following strategy:
+        - Start with web search if topic is unfamiliar to get context
+        - Use academic database for targeted searches with filters
+        - Use citation chasing to expand from good seed papers you've found
+        - Check paper details to avoid redundant searches
     
     Reflect on past actions and completed steps to decide what to do next.
     If you have sufficient results, stop and provide a concise summary of what you found.

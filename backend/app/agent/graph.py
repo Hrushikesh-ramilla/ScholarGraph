@@ -1,18 +1,14 @@
 import uuid
 from langchain_core.tools import tool
-from app.db.schema import S2Paper
-from app.agent.paper_finder import paper_finder
 from app.agent.paper_finder_fast import paper_finder_fast_graph
 from app.agent.qa import qa_graph
-from typing import Tuple
 from langgraph.graph import StateGraph
-from app.agent.states import State
+from app.agent.states import SupervisorState
 import logging
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 from langchain.chat_models import init_chat_model
 from langgraph.graph import START, END
-from app.agent.utils import setup_langsmith
 from pydantic import BaseModel, Field
 from langchain.messages import SystemMessage, AIMessage, ToolMessage, HumanMessage
 from app.tools.search import get_paper_details
@@ -20,21 +16,17 @@ from langgraph.types import Command
 from langchain.tools import ToolRuntime
 from langgraph.graph.ui import push_ui_message
 from langgraph.prebuilt import ToolNode, tools_condition
-from typing import Literal, List
-from app.agent.utils import get_paper_info_text
+from typing import Literal
 from app.agent.ui_manager import UIManager
-
+from app.core.schema import StepName, StepStatus
+from app.agent.utils import get_paper_abstract
 DO_NOT_RENDER_ID_PREFIX = "do-not-render-"
 
-# Initialize logging
+
 setup_logging()
 
-setup_langsmith()
 logger = logging.getLogger(__name__)
 
-step_tracking_message = None
-step_tracking_ui_id = None  # Store UI message ID globally
-ui_manager = None
 
 @tool
 def find_papers(runtime: ToolRuntime) -> Command:
@@ -63,11 +55,12 @@ def find_papers(runtime: ToolRuntime) -> Command:
         })
 
 @tool
-def answer_question(runtime: ToolRuntime) -> str:
+def retrieve_and_answer_question(runtime: ToolRuntime) -> str:
     """
     Answer the user question based on the current papers.
-    If user has selected specific papers, focus the analysis on those papers.
-    Trust the result from the tools would answer the user question based on the papers and forward the answer to the user.
+    The tool would retrieve evidence from the selected papers and answer the user question based on the evidence.
+    Return:
+    - The answer to the user's question
     """
     user_query = runtime.state.get("optimized_query", "")
     papers = runtime.state.get("papers", [])
@@ -93,17 +86,20 @@ def answer_question(runtime: ToolRuntime) -> str:
     logger.info("QA graph completed successfully")
     return result["final_answer"]
 
-def query_clarification(state: State):
+def query_clarification(state: SupervisorState):
     # create a message at the top for the step tracking
-    global step_tracking_message, step_tracking_ui_id, ui_manager
-    step_tracking_message_id = str(uuid.uuid4())  # Message ID (separate!)
-    step_tracking_ui_id = str(uuid.uuid4())  # UI component ID
-    step_tracking_message = AIMessage(id=step_tracking_message_id, content="")
-    ui_manager = UIManager(step_tracking_message, step_tracking_ui_id)
-
+    steps = []
     logger.debug("Query clarification node invoked")
-    ui_manager.update_step("query_clarification", "running")
-    # logger.info(f"[query_clarification] Pushed step tracking UI message: {test_ui_message['id']}")
+    new_steps = []
+    new_ui_tracking_message = AIMessage(id=str(uuid.uuid4()), content="")
+    new_ui_tracking_id = str(uuid.uuid4())
+    new_ui_state = {
+        "steps": [],
+        "ui_tracking_message": new_ui_tracking_message,
+        "ui_tracking_id": new_ui_tracking_id
+    }
+    ui_manager = UIManager.from_state(new_ui_state)
+    new_steps = ui_manager.update_ui(StepName.QUERY_CLARIFICATION, StepStatus.RUNNING)
     system_prompt = f"""
     You are an expert in clarifying user queries for a research assistant.
     You need to decide if the user's query is clear or it needs clarification.
@@ -128,25 +124,30 @@ def query_clarification(state: State):
 
     if "clarification" not in response:
         logger.info("Query is clear, proceeding to optimization")
-        ui_manager.update_step("query_clarification", "clear")
+        new_steps = ui_manager.update_ui(StepName.QUERY_CLARIFICATION, StepStatus.COMPLETED)
         return {
-            "messages": [step_tracking_message],
-            "is_clear": True
+            "messages": [new_ui_tracking_message],
+            "is_clear": True,
+            "steps": new_steps,
+            "ui_tracking_message": new_ui_tracking_message,
+            "ui_tracking_id": new_ui_tracking_id
         }
     else:
         logger.info("Query needs clarification, requesting user input")
         logger.debug(f"Clarification requested: {response['clarification'][:100]}...")
-        ui_manager.update_step("query_clarification", "unclear")
+        new_steps = ui_manager.update_ui(StepName.QUERY_CLARIFICATION, StepStatus.COMPLETED, response["clarification"])
         return {
-            "messages": [step_tracking_message, AIMessage(content=response["clarification"])],
-            "is_clear": False
+            "messages": [new_ui_tracking_message, AIMessage(content=response["clarification"])],
+            "is_clear": False,
+            "steps": new_steps,
+            "ui_tracking_message": new_ui_tracking_message,
+            "ui_tracking_id": new_ui_tracking_id
         }
 
-def query_optimization(state: State):
-    global ui_manager
+def query_optimization(state: SupervisorState):
     logger.debug("Query optimization node invoked")
-    ui_manager.update_step("query_optimization", "running")
-
+    ui_manager = UIManager.from_state(state)
+    new_steps = ui_manager.update_ui(StepName.QUERY_OPTIMIZATION, StepStatus.RUNNING)
     system_prompt = f"""
     You are an expert in optimizing user queries for a search agent for academic papers.
     Your goals is to rephrase the user query to be more specific and to be more likely to help the subagent find the most relevant papers and answer the user's question.
@@ -172,21 +173,22 @@ def query_optimization(state: State):
 
     logger.info(f"Query optimized: {response['optimized_query'][:100]}{'...' if len(response['optimized_query']) > 100 else ''}")
     logger.debug(f"Optimization reasoning: {response['reasoning'][:150]}...")
-    ui_manager.update_step("query_optimization", "completed", response['optimized_query'])
+    new_steps = ui_manager.update_ui(StepName.QUERY_OPTIMIZATION, StepStatus.COMPLETED, response['optimized_query'])
     message = f"The optimized query is: {response['optimized_query']}\n\nReasoning: {response['reasoning']}"
 
     return {
         "messages": [AIMessage(id=DO_NOT_RENDER_ID_PREFIX + str(uuid.uuid4()), content=message)], 
-        "optimized_query": response['optimized_query']
+        "optimized_query": response['optimized_query'],
+        "steps": new_steps
     }
 
-def should_clarify(state: State):
+def should_clarify(state: SupervisorState):
     is_clear = state.get("is_clear", True)
     route = "optimize" if is_clear else "end"
     return route
 
 supervisor_model = init_chat_model(model=settings.AGENT_MODEL_NAME, api_key=settings.GEMINI_API_KEY)
-tools = [find_papers, get_paper_details]
+tools = [find_papers, get_paper_details, retrieve_and_answer_question]
 
 supervisor_prompt = """
 You are a supervisor for a research assistant system.
@@ -215,7 +217,7 @@ def generate_plan(plan_choice: Literal["find_then_qa", "find_only", "qa_only"]) 
     """
     return ""
     
-def supervisor_agent_node(state: State):
+def supervisor_agent_node(state: SupervisorState):
     """
     Supervisor agent node that:
     1. Checks if last message is a ToolMessage from find_papers
@@ -225,8 +227,7 @@ def supervisor_agent_node(state: State):
     Note: Messages with id starting with "do-not-render-" are hidden from UI
     but remain in history for model reasoning.
     """
-    global ui_manager
-
+    ui_manager = UIManager.from_state(state)
     logger.debug("Supervisor agent node invoked")
 
     messages = state["messages"]
@@ -234,6 +235,7 @@ def supervisor_agent_node(state: State):
     # ========================================
     # POST-PROCESSING: Handle tool results
     # ========================================
+    paper_list_ui_message = None
     if isinstance(last_message, ToolMessage):
         logger.info(f"Post-processing ToolMessage from: {last_message.name}")
 
@@ -250,43 +252,32 @@ def supervisor_agent_node(state: State):
                     logger.debug(f"Converted {len(papers_data)} papers to dict format")
 
                     # Create AI message
-                    ai_message = AIMessage(
+                    paper_list_ui_message = AIMessage(
                         id=str(uuid.uuid4()),
                         content="",
                     )
 
-                    # Push UI message FROM NODE (officially supported!)
                     ui_msg = push_ui_message(
                         "papers",
                         {"papers": papers_data},
-                        message=ai_message
+                        message=paper_list_ui_message
                     )
 
                     logger.info(f"UI message pushed successfully: {ui_msg['id']}")
 
-                    # Update step tracker to show find_papers is completed
-                    ui_manager.update_step("find_papers", "completed", len(papers))
-
-                    # Return AI message to state and continue to next plan step
-                    return {"messages": [ai_message]}
+                    ui_manager.update_ui(StepName.FIND_PAPERS, StepStatus.COMPLETED, len(papers))
 
                 except Exception as e:
                     logger.error(f"Failed to push UI message: {e}", exc_info=True)
-                    # Continue to next plan step even if UI push fails
-                    return {}
             else:
-                # No papers or unexpected message format
                 logger.warning("find_papers returned but no papers found or unexpected message format")
-                return {}
 
-        elif last_message.name == "answer_question":
-            logger.info("answer_question completed successfully")
-            ui_manager.update_step("answer_question", "completed")
-            return {"messages": [AIMessage(content=last_message.content)]}
+        elif last_message.name == "retrieve_and_answer_question":
+            logger.info("retrieve_and_answer_question completed successfully")
+            ui_manager.update_ui(StepName.RETRIEVE_AND_ANSWER_QUESTION, StepStatus.COMPLETED)
 
         else:
             logger.warning(f"Unknown tool call: {last_message.name}")
-            return {}
     
     # ========================================
     # PLAN GENERATION & EXECUTION
@@ -296,35 +287,51 @@ def supervisor_agent_node(state: State):
     # Generate plan if it doesn't exist
     if len(plan) == 0:
         logger.info("Generating new plan")
-        ui_manager.update_step("plan", "running")
+        ui_manager.update_ui(StepName.PLAN, StepStatus.RUNNING)
         # Check if user has selected specific papers
         selected_ids = state.get("selected_paper_ids", [])
-        selected_context = ""
+        selected_paper_abstracts = ""
         if selected_ids:
             logger.info(f"User has selected {len(selected_ids)} specific papers for focused analysis")
-            selected_context = f"\n\nIMPORTANT: User has selected {len(selected_ids)} specific papers for focused analysis (IDs: {', '.join(selected_ids[:3])}{'...' if len(selected_ids) > 3 else ''}). Consider these papers when planning."
+            selected_paper_abstracts = get_paper_abstract(state.get("papers", []), selected_ids)
 
         plan_prompt = f"""
-        You are a supervisor for a research assistant system.
-        Generate a plan using the provided tool with provided context.{selected_context}
+        You are a planner for a research assistant system.
+        The research assistant system should help answer the user's question.
+        The system is capable of finding papers based on relevant to the user's question and retrieve evidence from the paper to answer the user's question.
+        You are provided with a tool to generate structured plan for the research assistant system to follow.
+        To correctly generate the plan you are provided with the chat history, the abstract of the papers that the system have found.
+
+        Goal:
+        - Generate a plan for the research assistant system to follow using the provided tool.
+
+        General Guidelines:
+        - Focus on the chat history and the last user's message to generate the plan.
+        - The paper abstracts should tell you what has been retrieved so far
+        - If the user's query is about some papers that are not present in the current paper list. Choose the qa_only plan.
+        - Distinguish between the find_then_qa and find_only plans
+           - If the user's query is only about finding papers, for example "Find me some papers about the topic of AI?", "Can you help me find some papers about AI agent?" Choose the find_only plan.
+           - If the user's query is a question about certain papers that are not present in the current paper list, Choose the find_then_qa plan. For example, "Can you explain the methodology in paper X?" "Find me the paper X and tell me what is it about?"
+        
+        The following is the paper abstracts that the system have found so far:
+        {selected_paper_abstracts}
+        Here is the chat history:
         """
         planner = supervisor_model_with_tools.bind_tools([generate_plan], tool_choice="generate_plan")
-        planner_context = f"""
-        User query: {state.get("optimized_query", "")}
-        Current papers: {get_paper_info_text(state.get("papers", []))}
-        """
         logger.debug("Invoking planner model")
         response = planner.invoke([
             SystemMessage(content=plan_prompt),
-            HumanMessage(content=planner_context)
+            *state.get("messages", []),
+            HumanMessage(content="Generate the plan")
         ])
+
         plan_choice = response.tool_calls[0]["args"]["plan_choice"]
         logger.info(f"Planner chose: {plan_choice}")
-        ui_manager.update_step("plan", "completed", plan_choice)
+        new_steps = ui_manager.update_ui(StepName.PLAN, StepStatus.COMPLETED, plan_choice)
         if plan_choice == "qa_only":
-            plan = ["answer_question", "end"]
+            plan = ["retrieve_and_answer_question", "end"]
         elif plan_choice == "find_then_qa":
-            plan = ["find_papers", "answer_question", "end"]
+            plan = ["find_papers", "retrieve_and_answer_question", "end"]
         elif plan_choice == "find_only":
             plan = ["find_papers", "end"]
         else:
@@ -343,13 +350,24 @@ def supervisor_agent_node(state: State):
 
     if current_step == "end":
         logger.info("Plan completed successfully")
-        return {}
-
+        if last_message.name == "retrieve_and_answer_question":
+            return {"plan_steps": plan, "messages": [AIMessage(content=last_message.content)]}
+        elif last_message.name == "find_papers":
+            if paper_list_ui_message:
+                logger.info("find_papers completed successfully")
+                return {"plan_steps": plan, "messages": [paper_list_ui_message]}
+            else:
+                logger.warning("find_papers completed but no UI message pushed")
+                return {"plan_steps": plan}
+        else:
+            return {"plan_steps": plan}
     # Update UI to show the step is starting
     if current_step == "find_papers":
-        ui_manager.update_step("find_papers", "running")
-    elif current_step == "answer_question":
-        ui_manager.update_step("answer_question", "running")
+        new_steps = ui_manager.update_ui(StepName.FIND_PAPERS, StepStatus.RUNNING)
+    elif current_step == "retrieve_and_answer_question":
+        new_steps = ui_manager.update_ui(StepName.RETRIEVE_AND_ANSWER_QUESTION, StepStatus.RUNNING)
+    else:
+        new_steps = ui_manager.steps
     # Create manual tool call for the next step
     manual_tool_call = {
         "name": current_step,
@@ -357,13 +375,13 @@ def supervisor_agent_node(state: State):
         "id": str(uuid.uuid4())
     }
 
-    return {"messages": [AIMessage(content="", tool_calls=[manual_tool_call])], "plan_steps": plan}
+    return {"messages": [AIMessage(content="", tool_calls=[manual_tool_call])], "plan_steps": plan, "steps": new_steps}
 
 supervisor_tool_node = ToolNode(tools)
 
 
 # Build the graph with decomposed supervisor
-graph = StateGraph(State)
+graph = StateGraph(SupervisorState)
 graph.add_node("query_clarification", query_clarification)
 graph.add_node("query_optimization", query_optimization)
 graph.add_node("supervisor_agent", supervisor_agent_node)

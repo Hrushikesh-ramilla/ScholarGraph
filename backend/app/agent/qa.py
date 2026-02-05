@@ -1,33 +1,29 @@
-from typing import Dict, List, Any, Optional
+
 from langchain.chat_models import init_chat_model
 from langchain.messages import SystemMessage, HumanMessage, AIMessage
-from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-from app.agent.states import State
-from app.agent.utils import get_user_query, setup_langsmith
 from app.core.config import settings         
-from app.tools.search import retrieve_evidence_from_selected_papers, get_paper_abstract
+from app.tools.search import retrieve_evidence_from_selected_papers
+from app.agent.utils import get_paper_abstract
 import logging
 import sys
-import json
 from typing import Union
 from app.agent.states import QAAgentState
-from app.db.schema import S2Paper
 from langgraph.graph import StateGraph, END, START
+from app.agent.prompts import (
+    QA_RETRIEVAL_SYSTEM,
+    QA_RETRIEVAL_USER,
+    QA_EVALUATION_SYSTEM,
+    QA_EVALUATION_USER,
+    QA_ANSWER_SYSTEM,
+    QA_ANSWER_USER,
+)
 
 logger = logging.getLogger(__name__)
-setup_langsmith()
 
 qa_model = init_chat_model(model=settings.QA_AGENT_MODEL_NAME, api_key=settings.OPENAI_API_KEY)
 
-
-def get_paper_abstract(papers: List[S2Paper], selected_paper_ids: List[str]) -> Dict[str, str]:
-    abstracts = {}
-    for paper in papers:
-        if paper.paperId in selected_paper_ids:
-            abstracts[paper.paperId] = paper.abstract
-    return abstracts
 
 def qa_retrieve(state: QAAgentState) -> QAAgentState:
     user_query = state.get("user_query", "")
@@ -39,21 +35,6 @@ def qa_retrieve(state: QAAgentState) -> QAAgentState:
             "evidences": [],
             "messages": [AIMessage(content="No papers have been selected for Q&A. Please select papers first or use the paper finding mode.")]
         }
-
-
-    QA_RETRIEVAL_SYSTEM = """You are an expert in evidence retrieval for academic paper QA.
-    Goal:
-    - You need to generate optimal tool calls to retrieve more evidence to answer the user's question.
-
-    General guide:
-    - The generated tool calls should be based on the following context: the chat history, the paper abstracts, the retrieved evidence and the limitation of the retrieved evidence.
-    - The user question is usually a research question about several selected papers and the paper abstracts are the ones of the selected papers.
-    - Use the chat history to understand what strategies you have tried and why you have tried them.
-    - Use the paper abstract and the retrieved evidence to better understand the context and the user's question.
-    - Use the limitation to guide you to generate the optimal tool calls.
-    - Generate no more than 3 tool calls focus on the tool call quality.
-    - You can use the search tool to help you understand the user's question better instead of directly answering the user's question.
-    """
 
     abstracts = get_paper_abstract(papers=papers, selected_paper_ids=selected_paper_ids)
     evidences = state.get("evidences", [])
@@ -68,17 +49,7 @@ def qa_retrieve(state: QAAgentState) -> QAAgentState:
         for paper_id, abstract in abstracts.items()
     ])
     
-    retrieval_prompt = f"""User query: {user_query}
-
-Paper abstracts:
-{abstracts_text}
-
-Retrieved evidences:
-{evidences_text}
-
-Limitation of the retrieved evidence:
-{limitation}
-"""
+    retrieval_prompt = QA_RETRIEVAL_USER.format(user_query=user_query, abstracts_text=abstracts_text, evidences_text=evidences_text, limitation=limitation)
 
     tool_model = qa_model.bind_tools([retrieve_evidence_from_selected_papers], tool_choice="retrieve_evidence_from_selected_papers")
     tool_response = tool_model.invoke([
@@ -91,25 +62,6 @@ Limitation of the retrieved evidence:
     }
 
 def qa_evaluate(state: QAAgentState) -> QAAgentState:
-    evaluation_system = """
-    You are an expert in evaluating the relevance of retrieved evidence for answering a research question.
-    You are given a chat history, user query, paper abstracts, retrieved evidence.
-    The user query is usually a research question about several selected papers and the paper abstracts are the ones of the selected papers.
-    The system have retrieved evidence to answer the user question.
-    
-    Goal:
-    - You need to evaluate the relevance of the retrieved evidence to the user query and decide whether we should answer the question or not.
-    - You can either choose to move on the answer the question or to ask for more evidence.
-    - If you choose to answer the question you need to provide a very concise reasoning for your choice.
-    - If you choose to ask for more evidence you need to provide a the limitation of the current retrieved evidence to help with the next retrieval attempt.
-
-    General Guidelines:
-    - If there is no limitation of the retrieved evidence, you should decide that the retrieved evidence is sufficient to answer the user query.
-    - If there is major limitation of the retrieved evidence, you should decide that the retrieved evidence is not sufficient to answer the user query.
-    - Sometimes the user's question might not be present in the paper, you just determine that the question is not answerable. If you retrieved a lot of evidences
-    and none of them is remotely relevant to the user's question, you should decide that the question is not answerable, choose to answer the question by telling the user that the question is not answerable.
-    """
-
     user_query = state.get("user_query", "")
     abstracts = get_paper_abstract(state.get("papers", []), state.get("selected_paper_ids", []))
     abstracts_text = "\n".join([
@@ -121,12 +73,8 @@ def qa_evaluate(state: QAAgentState) -> QAAgentState:
         f"Evidence {i+1}:\n{evidence.page_content}"
         for i, evidence in enumerate(evidences)
     ]) if evidences else "No evidence retrieved yet."
-    evaluation_prompt = f"""User query: {user_query}
-    Paper abstracts:
-    {abstracts_text}
-    Retrieved evidences:
-    {evidences_text}
-    """
+
+    evaluation_prompt = QA_EVALUATION_USER.format(user_query=user_query, abstracts_text=abstracts_text, evidences_text=evidences_text)
 
     class AskForMoreEvidence(BaseModel):
         limitation: str = Field(
@@ -142,7 +90,7 @@ def qa_evaluate(state: QAAgentState) -> QAAgentState:
 
     structured_model = qa_model.with_structured_output(Evaluation)
     decision_response = structured_model.invoke([
-        SystemMessage(content=evaluation_system),
+        SystemMessage(content=QA_EVALUATION_SYSTEM),
         HumanMessage(content=evaluation_prompt)
     ])
 
@@ -189,38 +137,9 @@ def qa_answer(state: QAAgentState) -> QAAgentState:
         f"Paper {paper_id}:\n{abstract}"
         for paper_id, abstract in abstracts.items()
     ])
-    
-    answer_prompt = f"""User question: {user_query}
-
-Paper abstracts:
-{abstracts_text}
-
-Limitation of the retrieved evidence:
-{limitation}
-
-Retrieved evidences:
-{evidences_text}
-
-Based on the above evidence and analysis, provide a concise yet complete answer to the user's question. If the evidence is insufficient, acknowledge the limitations."""
-
-    answer_system = """You are an expert research assistant that helps answer user questions.
-    The user question is usually a research question about several selected papers and the paper abstracts are the ones of the selected papers.
-    The system have retrieved evidence to answer the user question and the potential limitation of the retrieved evidence if any.
-    
-    Goal:
-    - You need to provide a concise yet complete answer to the user's question.
-    - You need to acknowledge the limitations of the evidence if the evidence is insufficient.
-    - You need to provide a follow-up suggestions if the evidence is insufficient.
-
-    General Strategy:
-    - YOU SHOULD DIRECTLY ANSWER THE USER'S QUESTION FIRST, THEN PROVIDE THE EVIDENCE TO SUPPORT YOUR ANSWER.
-    - If the answer is present in the retrieved evidence, you extract the answer from the evidence.
-    - BE BRIEF, CONCISE AND FACTUALLY CONSISTENT, DON'T PROVIDE UNNECESSARY INFORMATION.
-    - If the question is simple or can be extracted from the evidence. Answer the question as short as possible.
-    """
-
+    answer_prompt = QA_ANSWER_USER.format(user_query=user_query, abstracts_text=abstracts_text, evidences_text=evidences_text, limitation=limitation)
     response = qa_model.invoke([
-        SystemMessage(content=answer_system),
+        SystemMessage(content=QA_ANSWER_SYSTEM),
         HumanMessage(content=answer_prompt)
     ])
     

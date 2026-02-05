@@ -1,7 +1,8 @@
 from app.core.config import settings
 import os
 import time
-from app.db.schema import S2Paper
+from typing import List, Dict
+from app.core.schema import S2Paper
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -28,8 +29,9 @@ def get_paper_info_text(papers: list[S2Paper]) -> str:
         return "No papers found yet"
     return "\n".join([f"Paper {paper.paperId}: {paper.title}\nAuthors: {paper.authors}\nPublication Date: {paper.publicationDate}\nAbstract: {paper.abstract}\n" for paper in papers])
 
-def setup_langsmith():
-    os.environ["LANGCHAIN_TRACING_V2"] = str(settings.LANGSMITH_TRACING_V2)
-    os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
-    os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
-    
+def get_paper_abstract(papers: List[S2Paper], selected_paper_ids: List[str]) -> Dict[str, str]:
+    abstracts = {}
+    for paper in papers:
+        if paper.paperId in selected_paper_ids:
+            abstracts[paper.paperId] = paper.abstract
+    return abstracts
