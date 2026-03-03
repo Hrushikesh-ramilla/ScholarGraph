@@ -2,6 +2,8 @@
 
 An AI-powered research assistant that combines **multi-agent paper discovery** with **evidence-based question answering** over academic literature. Ask ScholarGraph to find papers on any research topic, then drill into them with precise, citation-grounded answers.
 
+**[Live demo → scholargraph-agent.vercel.app](https://scholargraph-agent.vercel.app)** | **[MCP server](./mcp/)** — use ScholarGraph's search tools directly in Claude Desktop
+
 ## Stack
 
 
