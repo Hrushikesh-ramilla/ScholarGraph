@@ -47,35 +47,34 @@ class Settings(BaseSettings):
     LANGCHAIN_PROJECT: str = ""
     LANGCHAIN_ENDPOINT: str = ""
 
-    EMBEDDING_MODEL_NAME: str
+    EMBEDDING_MODEL_NAME: str = "models/text-embedding-004"
 
-    SUPERVISOR_MODEL_NAME: str
-    PF_AGENT_MODEL_NAME: str
-    PF_FILTER_MODEL_NAME: str
-    QA_AGENT_MODEL_NAME: str
-    QA_EVALUATION_MODEL_NAME: str
-    QA_EVALUATOR_MODEL_NAME: str
-    QA_BASELINE_MODEL_NAME: str
+    SUPERVISOR_MODEL_NAME: str = "google_genai:gemini-1.5-pro"
+    PF_AGENT_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
+    PF_FILTER_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
+    QA_AGENT_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
+    QA_EVALUATION_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
+    QA_EVALUATOR_MODEL_NAME: str = "google_genai:gemini-1.5-pro"
+    QA_BASELINE_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
 
-    COHERE_API_KEY: str
-    
+    COHERE_API_KEY: str = ""
 
-    PDF_DOWNLOAD_DIR: str
+    PDF_DOWNLOAD_DIR: str = "./papers"
 
-    QDRANT_URL: str
+    QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
-    QDRANT_VECTOR_SIZE: int
-    QDRANT_COLLECTION: str
-    QDRANT_DISTANCE: str
+    QDRANT_VECTOR_SIZE: int = 768
+    QDRANT_COLLECTION: str = "papers"
+    QDRANT_DISTANCE: str = "COSINE"
 
-    S2_API_KEY: str
+    S2_API_KEY: str = ""
 
-    REDIS_URL: str
+    REDIS_URL: str = "redis://localhost:6379/0"
 
-    CELERY_BROKER_URL: str
-    CELERY_RESULT_BACKEND: str
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
 
-    GROBID_SERVER_URL: str
+    GROBID_SERVER_URL: str = "http://localhost:8070"
 
     CLERK_JWKS_URL: str = ""  # only required by the LangGraph backend, not the Celery worker
     DISABLE_AUTH: bool = False

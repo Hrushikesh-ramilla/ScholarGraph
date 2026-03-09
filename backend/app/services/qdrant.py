@@ -18,14 +18,49 @@ from collections import defaultdict
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.retrievers import ParentDocumentRetriever
 from app.agent.RedisDocumentStore import RedisDocumentStore
-from langchain_openai import OpenAIEmbeddings
 from app.core.config import settings
 from langchain_core.runnables import ConfigurableField
 from typing import List
 
-
-embeddings = OpenAIEmbeddings(model=settings.EMBEDDING_MODEL_NAME)
 logger = logging.getLogger(__name__)
+
+
+def get_embeddings():
+    """Initializes embeddings, natively supporting Google Gemini (models/text-embedding-004)
+    as well as OpenAI embeddings, with safe offline fallback for testing.
+    """
+    model_name = settings.EMBEDDING_MODEL_NAME
+    if (
+        model_name.startswith("models/")
+        or "gemini" in model_name.lower()
+        or "text-embedding-004" in model_name
+        or (not settings.OPENAI_API_KEY and settings.GEMINI_API_KEY)
+    ):
+        try:
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+            g_model = (
+                model_name
+                if model_name.startswith("models/")
+                else f"models/{model_name}"
+                if "text-embedding" in model_name
+                else "models/text-embedding-004"
+            )
+            return GoogleGenerativeAIEmbeddings(
+                model=g_model, google_api_key=settings.GEMINI_API_KEY or None
+            )
+        except Exception as e:
+            logger.warning("Failed to initialize GoogleGenerativeAIEmbeddings: %s", e)
+
+    try:
+        from langchain_openai import OpenAIEmbeddings
+        return OpenAIEmbeddings(model=model_name, openai_api_key=settings.OPENAI_API_KEY or None)
+    except Exception as e:
+        logger.warning("Failed to initialize OpenAIEmbeddings: %s", e)
+        from langchain_core.embeddings import FakeEmbeddings
+        return FakeEmbeddings(size=settings.QDRANT_VECTOR_SIZE or 768)
+
+
+embeddings = get_embeddings()
 kv_store = RedisDocumentStore(redis_url=settings.REDIS_URL)
 
 

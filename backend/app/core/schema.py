@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, TypedDict
 from datetime import datetime
 from enum import Enum
@@ -6,6 +6,7 @@ from enum import Enum
 
 class ArxivPaper(BaseModel):
     """Pydantic model for ArXiv paper data matching the exact schema."""
+    model_config = ConfigDict(populate_by_name=True)
     
     # Required fields
     id: str = Field(..., description="ArXiv ID (e.g., '0704.0001')")
@@ -27,15 +28,14 @@ class ArxivPaper(BaseModel):
     submission_date: Optional[datetime] = Field(None, description="Date of submission")
     update_date: Optional[datetime] = Field(None, description="Date of last update")
     
-    class Config:
-        populate_by_name = True  # Allow both field names and aliases
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
-    
-    def to_elasticsearch_doc(self) -> dict:
-        """Convert to dictionary format for Elasticsearch indexing."""
+    def to_index_doc(self) -> dict:
+        """Convert to dictionary format for indexing."""
         doc = self.model_dump(by_alias=True, exclude_none=True)
+        return doc
+
+    def to_elasticsearch_doc(self) -> dict:
+        """Backward-compatible alias for to_index_doc."""
+        return self.to_index_doc()
         
         # Ensure proper field names for Elasticsearch
         if 'journal_ref' in doc:
