@@ -16,7 +16,7 @@ A **multi-agent AI research system** built on a supervisor architecture. A top-l
 | Layer                    | Technology                                                      |
 | ------------------------ | --------------------------------------------------------------- |
 | Agent orchestration      | LangGraph (supervisor + subgraph pattern)                       |
-| LLM inference            | Google Gemini 3 Flash (preview) via LangChain                   |
+| LLM inference            | Google Gemini 1.5 Pro / Flash via LangChain                     |
 | API server               | FastAPI                                                         |
 | Async task queue         | Celery + Redis                                                  |
 | Frontend                 | React 19 + Vite + TypeScript                                    |
@@ -26,7 +26,7 @@ A **multi-agent AI research system** built on a supervisor architecture. A top-l
 | Paper search             | Semantic Scholar API (200M+ papers)                             |
 | Web search               | Tavily                                                          |
 | Reranking                | Cohere                                                          |
-| Embeddings               | Google Gemini `models/text-embedding-004` / OpenAI `text-embedding-3-small` |
+| Embeddings               | Google Gemini `models/text-embedding-004` (768-dim)             |
 | Auth                     | Clerk (optional)                                                |
 
 
@@ -161,10 +161,10 @@ cp backend/.env_example backend/.env.local
 
 Edit `backend/.env.local` and fill in at minimum:
 
-- `OPENAI_API_KEY` — for embeddings
-- `GEMINI_API_KEY` — for all agent LLM calls
+- `GEMINI_API_KEY` — for all agent LLM calls and dense vector embeddings (`models/text-embedding-004`)
 - `COHERE_API_KEY` — for reranking
 - `S2_API_KEY` — for Semantic Scholar search
+- `OPENAI_API_KEY` — (optional) legacy fallback for OpenAI models
 
 Local infrastructure variables (Qdrant, Redis, Grobid) are pre-filled with `localhost` defaults.
 

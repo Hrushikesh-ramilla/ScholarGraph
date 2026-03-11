@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: aira-postgres
+    container_name: scholargraph-postgres
     restart: always
     environment:
       POSTGRES_USER: postgres
@@ -19,7 +19,7 @@ services:
 
   redis:
     image: redis:latest
-    container_name: aira-redis
+    container_name: scholargraph-redis
     restart: always
     ports:
       - "6379:6379"
@@ -31,7 +31,7 @@ services:
 
   grobid:
     image: grobid/grobid:0.8.2-crf
-    container_name: aira-grobid
+    container_name: scholargraph-grobid
     ports:
       - "8070:8070"
     init: true
@@ -47,7 +47,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: aira-qdrant
+    container_name: scholargraph-qdrant
     restart: always
     ports:
       - "6333:6333"   # REST

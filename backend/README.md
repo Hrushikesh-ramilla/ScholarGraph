@@ -12,7 +12,7 @@ A LangGraph-powered research assistant with two modes: **paper finding** (Semant
 ```bash
 # 1. Copy and configure environment
 cp backend/.env_example backend/.env
-# Edit backend/.env — at minimum set OPENAI_API_KEY, GEMINI_API_KEY, COHERE_API_KEY, S2_API_KEY
+# Edit backend/.env — at minimum set GEMINI_API_KEY, COHERE_API_KEY, S2_API_KEY
 
 # 2. Start all infrastructure
 # Postgres (5432), Redis (6379), Qdrant (6333), Grobid (8070)
@@ -32,25 +32,27 @@ The backend API will be available at `http://localhost:2024`.
 
 ## Environment Variables
 
-### LLM APIs
+### LLM & Embedding APIs
 
 | Variable | Required | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | Yes | OpenAI API key — used for embeddings (`text-embedding-3-small`) |
-| `GEMINI_API_KEY` | Yes | Gemini API key — used for all agent LLM calls |
+| `GEMINI_API_KEY` | **Yes** | Google Gemini API key — powers all agent reasoning loops and dense vector embeddings (`models/text-embedding-004`) |
+| `OPENAI_API_KEY` | No | Optional legacy fallback for third-party OpenAI embedding models (`text-embedding-3-small`) |
 
-### Model Names
+### Model Configurations
 
-| Variable | Default | Description |
+All agents run natively on **Google Gemini** via LangChain's `init_chat_model` and `langchain-google-genai`:
+
+| Variable | Default | Agent Persona / Role |
 |---|---|---|
-| `EMBEDDING_MODEL_NAME` | `text-embedding-3-small` | OpenAI embedding model (1536-dim) |
-| `SUPERVISOR_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | Main supervisor / router |
-| `PF_AGENT_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | Paper finder planner & executor |
-| `PF_FILTER_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | Paper finder replan agent |
-| `QA_AGENT_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | Q&A answer generation |
-| `QA_EVALUATION_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | Q&A evidence evaluation |
-| `QA_EVALUATOR_MODEL_NAME` | `google_genai:gemini-3-pro-preview` | Q&A evaluator (uses Pro for higher accuracy) |
-| `QA_BASELINE_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | Q&A baseline |
+| `SUPERVISOR_MODEL_NAME` | `google_genai:gemini-1.5-pro` | **Supervisor Orchestrator**: Evaluates user query ambiguity, constructs execution DAG, routes between subagents, and manages paper review interrupts |
+| `PF_AGENT_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Paper Finding Subagent**: Multi-step search planner and iterative ReAct search agent over Semantic Scholar and Tavily |
+| `PF_FILTER_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Abstract Relevance Filter**: High-throughput abstract evaluation and pre-filtering before Cohere reranking |
+| `QA_AGENT_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Q&A Evidence Subagent**: Generates targeted vector retrieval queries and synthesizes final answers grounded in selected paper chunks |
+| `QA_EVALUATION_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Evidence Sufficiency Evaluator**: Evaluates retrieved chunks (`AnswerQuestion` vs `AskForMoreEvidence` with feedback loop) |
+| `QA_EVALUATOR_MODEL_NAME` | `google_genai:gemini-1.5-pro` | **Offline Benchmark Judge**: High-precision evaluation and grading against QASPER academic datasets |
+| `QA_BASELINE_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Evaluation Baseline**: Unassisted zero-shot baseline model for benchmark comparison |
+| `EMBEDDING_MODEL_NAME` | `models/text-embedding-004` | **Dense Vector Embeddings**: Google 768-dim embedding model used for Qdrant document chunk indexing |
 
 ### LangSmith Tracing (optional)
 
