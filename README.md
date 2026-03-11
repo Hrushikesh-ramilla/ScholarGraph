@@ -1,8 +1,14 @@
 # ScholarGraph
 
-An AI-powered research assistant that combines **multi-agent paper discovery** with **evidence-based question answering** over academic literature. Ask ScholarGraph to find papers on any research topic, then drill into them with precise, citation-grounded answers.
+A **multi-agent AI research system** built on a supervisor architecture. A top-level supervisor routes between specialized subagents — a Paper Finding Agent for academic search and citation discovery, and a Q&A Agent for evidence-based question answering over the papers you select.
 
-**[Live demo → scholargraph-agent.vercel.app](https://scholargraph-agent.vercel.app)** | **[MCP server](./mcp/)** — use ScholarGraph's search tools directly in Claude Desktop
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![LangGraph](https://img.shields.io/badge/orchestration-LangGraph-orange.svg)](https://langchain-ai.github.io/langgraph/)
+[![Google Gemini](https://img.shields.io/badge/LLM-Google%20Gemini-4285F4.svg)](https://ai.google.dev/)
+[![React 19](https://img.shields.io/badge/frontend-React%2019-61DAFB.svg)](https://react.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**[MCP Server](./mcp/)** — use ScholarGraph's search tools directly in Claude Desktop or custom agent harnesses. | **[Backend Architecture](./backend/README.md)**
 
 ## Stack
 
@@ -20,13 +26,13 @@ An AI-powered research assistant that combines **multi-agent paper discovery** w
 | Paper search             | Semantic Scholar API (200M+ papers)                             |
 | Web search               | Tavily                                                          |
 | Reranking                | Cohere                                                          |
-| Embeddings               | OpenAI `text-embedding-3-small` (1536-dim)                      |
+| Embeddings               | Google Gemini `models/text-embedding-004` / OpenAI `text-embedding-3-small` |
 | Auth                     | Clerk (optional)                                                |
 
 
 ## Agent Architecture
 
-ScholarGraph is built around a **three-tier LangGraph agent hierarchy**: a supervisor that plans and routes, a paper finder subgraph that searches, and a Q&A subgraph that retrieves and answers.
+ScholarGraph is built around three LangGraph agents: a **Supervisor** that plans and routes, a **Paper Finding Agent** that searches and discovers papers, and a **Q&A Agent** that retrieves evidence and answers questions.
 
 ### Supervisor (`graph.py`)
 
@@ -56,9 +62,9 @@ query_evaluation → planner → executor → supervisor_tools → post_tool
 
 ---
 
-### Paper Finder Subgraph (`paper_finder.py`)
+### Paper Finding Agent (`paper_finder.py`)
 
-Invoked by the supervisor's `find_papers` tool. Runs an iterative search loop (max 3 iterations) to retrieve papers from Semantic Scholar:
+Invoked by the supervisor's `find_papers` tool. Runs an iterative search loop (max 3 iterations) using a combination of search tools:
 
 ```
 planner ──→ executor ──→ replan_agent
@@ -83,13 +89,13 @@ planner ──→ executor ──→ replan_agent
 
 After the search agent finishes its step, all accumulated papers are **reranked with Cohere** against a keyword-optimised query derived from the original task. Only the top-35 most relevant papers are kept, preventing the list from growing unboundedly across iterations.
 
-`**replan_agent*`* — Evaluates whether the goal is achieved by inspecting the *actual paper list* (not just what appeared in web search summaries). If the goal is not yet met, it rewrites the remaining plan steps with explicit retrieval targets, then loops back to the executor.
+`**replan_agent**` — Evaluates whether the goal is achieved by inspecting the *actual paper list* (not just what appeared in web search summaries). If the goal is not yet met, it rewrites the remaining plan steps with explicit retrieval targets, then loops back to the executor.
 
 All three nodes emit `finder_status` custom events that the frontend renders as a real-time **Research Agent** status card.
 
 ---
 
-### Q&A Subgraph (`qa.py`)
+### Q&A Agent (`qa.py`)
 
 Invoked after paper selection. Performs iterative evidence retrieval scoped to the user-selected paper IDs (max 3 iterations):
 
@@ -101,11 +107,11 @@ qa_retrieve ──→ tools ──→ qa_evaluate ──→ qa_answer
                           qa_retrieve …
 ```
 
-`**qa_retrieve**` — Generates focused retrieval queries from the user question and calls `retrieve_evidence_from_selected_papers`, which performs vector search over the Qdrant collection filtered to the selected paper IDs only. This scoping ensures answers are grounded exclusively in the papers the user chose.
+`**qa_retrieve**` — On the first iteration, checks Qdrant for each selected paper and records which ones have no indexed full text (e.g. ingestion failed or paper not on arXiv). These `unindexed_paper_ids` are carried in state so downstream nodes can handle thin evidence gracefully. Then generates focused retrieval queries and calls `retrieve_evidence_from_selected_papers`, which performs vector search over the Qdrant collection filtered to the selected paper IDs only. This scoping ensures answers are grounded exclusively in the papers the user chose.
 
 `**qa_evaluate**` — Uses structured output to decide between two outcomes: `AnswerQuestion` (evidence is sufficient) or `AskForMoreEvidence` (evidence is weak — includes a `limitation` string that seeds the next retrieval attempt with a better query strategy).
 
-`**qa_answer**` — Synthesises a final answer from all accumulated evidence chunks, cites sources at the segment level, and explicitly acknowledges any gaps when the maximum iteration limit is reached.
+`**qa_answer**` — Synthesises a final answer from all accumulated evidence chunks. Always leads with the answer; if any selected papers were unindexed, a single caveat sentence is appended at the end noting that only the abstract was available for those papers.
 
 All three nodes emit `qa_status` events rendered as a real-time **Q&A Agent** status card.
 
@@ -113,16 +119,20 @@ All three nodes emit `qa_status` events rendered as a real-time **Q&A Agent** st
 
 ### Paper Ingestion Pipeline (Celery)
 
-Papers are ingested asynchronously via a Celery task so the UI never blocks:
+When a user adds a paper to their list, two things happen simultaneously: the paper is added to the agent's context (so it knows which papers the Q&A should be scoped to), and an ingestion task is pushed to the Redis queue for background processing.
+
+The **vector store is shared across all users**. The Celery worker checks whether the paper is already indexed before doing any work — if another user ingested it earlier, the task skips straight to done. This significantly reduces average ingestion time across the platform.
+
+If the paper is not yet indexed, the worker runs the full pipeline:
 
 1. **arXiv lookup** — searches arXiv by title to find a PDF URL
 2. **PDF download** — fetches the PDF to a temp file (`PDF_DOWNLOAD_DIR`)
-3. **Grobid parsing** — sends the PDF to a local Grobid container for structured full-text extraction
-4. **Chunking & embedding** — splits the extracted text into overlapping chunks and embeds each with OpenAI `text-embedding-3-small`
+3. **Grobid parsing** — sends the PDF to a local Grobid container for structured, section-aware full-text extraction
+4. **Chunking & embedding** — splits extracted text using a parent indexing strategy: smaller chunks are embedded for accurate vector retrieval; larger parent chunks are stored for richer LLM context at answer time. Embeddings support Google Gemini `models/text-embedding-004` (with OpenAI `text-embedding-3-small` fallback).
 5. **Qdrant upsert** — stores vectors with paper ID and section metadata for scoped retrieval
 6. **Cleanup** — the temp PDF is deleted regardless of success or failure
 
-If no arXiv PDF is available, the pipeline falls back to abstract-only ingestion.
+If no arXiv PDF is found, the task returns a clean failure with a specific error message. No partial data is written to Qdrant, so re-ingestion can be attempted cleanly.
 
 ---
 

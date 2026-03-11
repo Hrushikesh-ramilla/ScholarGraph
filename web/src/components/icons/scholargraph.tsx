@@ -17,14 +17,14 @@ export function ScholarGraphSVG({
       className={className}
     >
       <defs>
-        <linearGradient id="scholargraphGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+        <linearGradient id="scholarGraphGrad" x1="0%" y1="100%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#222222" />
           <stop offset="100%" stopColor="#aaaaaa" />
         </linearGradient>
       </defs>
       <path
         d="M4,58 C15,58 25,50 35,35 L58,4 L60,20 C50,35 38,48 20,52 L4,58 Z"
-        fill="url(#scholargraphGrad)"
+        fill="url(#scholarGraphGrad)"
       />
     </svg>
   );
