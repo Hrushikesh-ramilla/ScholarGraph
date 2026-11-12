@@ -70,6 +70,12 @@ async def _optimize_for_paper_search(messages: list) -> tuple[str, str]:
     return args["search_task"], args["rerank_query"]
 
 
+async def _optimize_for_search(messages: list) -> str:
+    """Derive optimized search query from messages."""
+    _, rerank_query = await _optimize_for_paper_search(messages)
+    return rerank_query
+
+
 async def _optimize_for_qa(messages: list) -> str:
     """Derive a fully self-contained research question from the full conversation history."""
     class QAQueryOutput(BaseModel):

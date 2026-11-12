@@ -49,13 +49,13 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL_NAME: str = "models/text-embedding-004"
 
-    SUPERVISOR_MODEL_NAME: str = "google_genai:gemini-1.5-pro"
-    PF_AGENT_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
-    PF_FILTER_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
-    QA_AGENT_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
-    QA_EVALUATION_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
-    QA_EVALUATOR_MODEL_NAME: str = "google_genai:gemini-1.5-pro"
-    QA_BASELINE_MODEL_NAME: str = "google_genai:gemini-1.5-flash"
+    SUPERVISOR_MODEL_NAME: str = "google_genai:gemini-3-flash-preview"
+    PF_AGENT_MODEL_NAME: str = "google_genai:gemini-3.5-flash-lite"
+    PF_FILTER_MODEL_NAME: str = "google_genai:gemini-3.5-flash-lite"
+    QA_AGENT_MODEL_NAME: str = "google_genai:gemini-3.5-flash-lite"
+    QA_EVALUATION_MODEL_NAME: str = "google_genai:gemini-3.5-flash-lite"
+    QA_EVALUATOR_MODEL_NAME: str = "google_genai:gemini-3-flash-preview"
+    QA_BASELINE_MODEL_NAME: str = "google_genai:gemini-3.5-flash-lite"
 
     COHERE_API_KEY: str = ""
 
