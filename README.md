@@ -16,7 +16,7 @@ A **multi-agent AI research system** built on a supervisor architecture. A top-l
 | Layer                    | Technology                                                      |
 | ------------------------ | --------------------------------------------------------------- |
 | Agent orchestration      | LangGraph (supervisor + subgraph pattern)                       |
-| LLM inference            | Google Gemini 1.5 Pro / Flash via LangChain                     |
+| LLM inference            | Google Gemini 3.5 Flash Lite / 3 Flash Preview via LangChain    |
 | API server               | FastAPI                                                         |
 | Async task queue         | Celery + Redis                                                  |
 | Frontend                 | React 19 + Vite + TypeScript                                    |

@@ -45,13 +45,13 @@ All agents run natively on **Google Gemini** via LangChain's `init_chat_model` a
 
 | Variable | Default | Agent Persona / Role |
 |---|---|---|
-| `SUPERVISOR_MODEL_NAME` | `google_genai:gemini-1.5-pro` | **Supervisor Orchestrator**: Evaluates user query ambiguity, constructs execution DAG, routes between subagents, and manages paper review interrupts |
-| `PF_AGENT_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Paper Finding Subagent**: Multi-step search planner and iterative ReAct search agent over Semantic Scholar and Tavily |
-| `PF_FILTER_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Abstract Relevance Filter**: High-throughput abstract evaluation and pre-filtering before Cohere reranking |
-| `QA_AGENT_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Q&A Evidence Subagent**: Generates targeted vector retrieval queries and synthesizes final answers grounded in selected paper chunks |
-| `QA_EVALUATION_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Evidence Sufficiency Evaluator**: Evaluates retrieved chunks (`AnswerQuestion` vs `AskForMoreEvidence` with feedback loop) |
-| `QA_EVALUATOR_MODEL_NAME` | `google_genai:gemini-1.5-pro` | **Offline Benchmark Judge**: High-precision evaluation and grading against QASPER academic datasets |
-| `QA_BASELINE_MODEL_NAME` | `google_genai:gemini-1.5-flash` | **Evaluation Baseline**: Unassisted zero-shot baseline model for benchmark comparison |
+| `SUPERVISOR_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | **Supervisor Orchestrator**: Evaluates user query ambiguity, constructs execution DAG, routes between subagents, and manages paper review interrupts |
+| `PF_AGENT_MODEL_NAME` | `google_genai:gemini-3.5-flash-lite` | **Paper Finding Subagent**: Multi-step search planner and iterative ReAct search agent over Semantic Scholar and Tavily |
+| `PF_FILTER_MODEL_NAME` | `google_genai:gemini-3.5-flash-lite` | **Abstract Relevance Filter**: High-throughput abstract evaluation and pre-filtering before Cohere reranking |
+| `QA_AGENT_MODEL_NAME` | `google_genai:gemini-3.5-flash-lite` | **Q&A Evidence Subagent**: Generates targeted vector retrieval queries and synthesizes final answers grounded in selected paper chunks |
+| `QA_EVALUATION_MODEL_NAME` | `google_genai:gemini-3.5-flash-lite` | **Evidence Sufficiency Evaluator**: Evaluates retrieved chunks (`AnswerQuestion` vs `AskForMoreEvidence` with feedback loop) |
+| `QA_EVALUATOR_MODEL_NAME` | `google_genai:gemini-3-flash-preview` | **Offline Benchmark Judge**: High-precision evaluation and grading against QASPER academic datasets |
+| `QA_BASELINE_MODEL_NAME` | `google_genai:gemini-3.5-flash-lite` | **Evaluation Baseline**: Unassisted zero-shot baseline model for benchmark comparison |
 | `EMBEDDING_MODEL_NAME` | `models/text-embedding-004` | **Dense Vector Embeddings**: Google 768-dim embedding model used for Qdrant document chunk indexing |
 
 ### LangSmith Tracing (optional)
