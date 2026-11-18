@@ -1,6 +1,7 @@
 import "./App.css";
 import { Thread } from "@/components/thread";
 import { SignedIn, SignedOut, SignIn, SignUp } from "@clerk/clerk-react";
+import { PUBLISHABLE_KEY } from "@/lib/auth";
 import { ScholarGraphSVG } from "@/components/icons/scholargraph";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { Search, BookOpen, Sparkles } from "lucide-react";
@@ -106,6 +107,10 @@ function AuthenticatedApp() {
 }
 
 function App() {
+  if (!PUBLISHABLE_KEY) {
+    return <AuthenticatedApp />;
+  }
+
   return (
     <Routes>
       <Route

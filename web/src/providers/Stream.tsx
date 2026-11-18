@@ -18,7 +18,7 @@ import { useQueryState } from "nuqs";
 import { getApiKey } from "@/lib/api-key";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
-import { useAuth } from "@clerk/clerk-react";
+import { useAppAuth as useAuth } from "@/lib/auth";
 
 // StreamProvider only mounts inside <SignedIn>, so getToken will always
 // be available.
@@ -141,7 +141,7 @@ const StreamSession = ({
 };
 
 // Default values for the form
-const DEFAULT_API_URL = "http://localhost:2024";
+const DEFAULT_API_URL = typeof window !== "undefined" ? window.location.origin : "http://localhost:2024";
 const DEFAULT_ASSISTANT_ID = "agent";
 
 export const StreamProvider: React.FC<{ children: ReactNode }> = ({

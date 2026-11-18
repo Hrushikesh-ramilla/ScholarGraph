@@ -12,7 +12,7 @@ import {
   SetStateAction,
 } from "react";
 import { createClient } from "./client";
-import { useAuth } from "@clerk/clerk-react";
+import { useAppAuth as useAuth } from "@/lib/auth";
 
 interface ThreadContextType {
   getThreads: () => Promise<Thread[]>;
@@ -41,8 +41,8 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
 
-  const resolvedApiUrl = apiUrl || import.meta.env.VITE_API_URL;
-  const resolvedAssistantId = assistantId || import.meta.env.VITE_ASSISTANT_ID;
+  const resolvedApiUrl = apiUrl || import.meta.env.VITE_API_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:2024");
+  const resolvedAssistantId = assistantId || import.meta.env.VITE_ASSISTANT_ID || "agent";
 
   const getThreads = useCallback(async (): Promise<Thread[]> => {
     if (!resolvedApiUrl || !resolvedAssistantId) return [];
