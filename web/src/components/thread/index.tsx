@@ -232,7 +232,7 @@ export function Thread() {
         )}
         layout={isLargeScreen}
         animate={{
-          marginLeft: chatHistoryOpen ? (isLargeScreen ? 300 : 0) : 0,
+          marginLeft: 0,
           marginRight: selectedPapersOpen ? (isLargeScreen ? 400 : 0) : 0,
         }}
         transition={
@@ -246,7 +246,7 @@ export function Thread() {
             <div>
               {(!chatHistoryOpen || !isLargeScreen) && (
                 <Button
-                  className="hover:bg-gray-100"
+                  className="hover:bg-accent hover:text-foreground text-foreground/80"
                   variant="ghost"
                   onClick={() => setChatHistoryOpen((p) => !p)}
                 >
@@ -269,7 +269,7 @@ export function Thread() {
               <div className="absolute left-0 z-10">
                 {(!chatHistoryOpen || !isLargeScreen) && (
                   <Button
-                    className="hover:bg-gray-100"
+                    className="hover:bg-accent hover:text-foreground text-foreground/80"
                     variant="ghost"
                     onClick={() => setChatHistoryOpen((p) => !p)}
                   >
@@ -306,7 +306,7 @@ export function Thread() {
               </div>
               <div className="relative">
                 <Button
-                  className="hover:bg-gray-100"
+                  className="hover:bg-accent hover:text-foreground text-foreground/80"
                   variant="ghost"
                   onClick={() => setSelectedPapersOpen((p) => !p)}
                 >
@@ -340,7 +340,7 @@ export function Thread() {
         <StickToBottom className="relative flex-1 overflow-hidden">
           <StickyToBottomContent
             className={cn(
-              "absolute px-4 inset-0 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent",
+              "absolute px-4 inset-0 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/60 [&::-webkit-scrollbar-track]:bg-transparent",
               !chatStarted && "flex flex-col items-stretch mt-[25vh]",
               chatStarted && "grid grid-rows-[1fr_auto]",
             )}
@@ -381,7 +381,7 @@ export function Thread() {
               </>
             }
             footer={
-              <div className="sticky flex flex-col items-center gap-8 bottom-0 bg-white">
+              <div className="sticky flex flex-col items-center gap-8 bottom-0 bg-background">
                 {!chatStarted && (
                   <div className="flex flex-col items-start gap-2 w-full max-w-3xl">
                     <div className="flex gap-3 items-center">
@@ -400,8 +400,8 @@ export function Thread() {
                 <ScrollToBottom className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 animate-in fade-in-0 zoom-in-95" />
 
                 <div className={cn(
-                  "bg-muted rounded-2xl border shadow-xs mx-auto mb-8 w-full max-w-3xl relative z-10 transition-colors",
-                  isInterrupted && "border-amber-300 bg-amber-50/40",
+                  "bg-card/90 rounded-2xl border border-border shadow-xl mx-auto mb-8 w-full max-w-3xl relative z-10 transition-colors",
+                  isInterrupted && "border-amber-500/50 bg-amber-950/20",
                 )}>
                   <form
                     onSubmit={handleSubmit}
@@ -478,7 +478,7 @@ export function Thread() {
 
       {/* Right panel: Selected Papers - absolutely positioned */}
       {selectedPapersOpen && (
-        <div className="absolute right-0 top-0 h-full w-[400px] border-l bg-white shadow-lg z-30 hidden lg:block">
+        <div className="absolute right-0 top-0 h-full w-[400px] border-l border-border bg-card shadow-2xl z-30 hidden lg:block">
           <SelectedPapersPanel />
         </div>
       )}

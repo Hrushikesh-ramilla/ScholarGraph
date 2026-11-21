@@ -1,4 +1,5 @@
 from .search import (
+    google_search_grounding,
     s2_search_papers,
     tavily_research_overview,
     get_paper_details,
@@ -8,6 +9,7 @@ from .search import (
 )
 
 __all__ = [
+    "google_search_grounding",
     "s2_search_papers",
     "tavily_research_overview",
     "get_paper_details",

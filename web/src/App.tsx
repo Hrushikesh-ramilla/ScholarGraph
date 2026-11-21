@@ -76,12 +76,12 @@ function AuthPage({ form }: { form: "sign-in" | "sign-up" }) {
       <LeftPanel />
 
       {/* Right panel */}
-      <div className="flex flex-1 flex-col items-center justify-center bg-white px-8 py-12">
+      <div className="flex flex-1 flex-col items-center justify-center bg-background text-foreground px-8 py-12">
         {/* Mobile-only header */}
         <div className="mb-8 flex flex-col items-center gap-2 text-center lg:hidden">
           <ScholarGraphSVG width={48} height={48} />
-          <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">ScholarGraph</h1>
-          <p className="text-gray-500 text-sm">Your AI research assistant</p>
+          <h1 className="text-2xl font-semibold text-foreground tracking-tight">ScholarGraph</h1>
+          <p className="text-muted-foreground text-sm">Your AI research assistant</p>
         </div>
 
         {form === "sign-in" ? (

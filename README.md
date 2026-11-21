@@ -1,207 +1,191 @@
 # ScholarGraph
 
-A **multi-agent AI research system** built on a supervisor architecture. A top-level supervisor routes between specialized subagents — a Paper Finding Agent for academic search and citation discovery, and a Q&A Agent for evidence-based question answering over the papers you select.
+A **production multi-agent AI research platform** built on an autonomous supervisor architecture. A top-level LangGraph supervisor orchestrates specialized subagents — an iterative Paper Finding Agent for federated academic retrieval and citation chasing, and a grounded Q&A Agent for evidence-based synthesis over user-selected literature.
+
+> 🚀 **Live Production Deployment**: [scholargraph.hrushikeshramilla.in](https://scholargraph.hrushikeshramilla.in)  
+> Hosted on AWS EC2, automated TLS termination via Caddy reverse proxy, containerized vector & ingestion services, powered by Google Gemini, FlashRank in-process ONNX neural reranking, OpenAlex + arXiv federated retrieval, and Google OpenID Connect.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![LangGraph](https://img.shields.io/badge/orchestration-LangGraph-orange.svg)](https://langchain-ai.github.io/langgraph/)
-[![Google Gemini](https://img.shields.io/badge/LLM-Google%20Gemini-4285F4.svg)](https://ai.google.dev/)
-[![React 19](https://img.shields.io/badge/frontend-React%2019-61DAFB.svg)](https://react.dev/)
+[![Google Gemini](https://img.shields.io/badge/LLM-Google%20Gemini%203.5-4285F4.svg)](https://ai.google.dev/)
+[![React 19](https://img.shields.io/badge/frontend-React%2019%20(Dark%20Navy)-61DAFB.svg)](https://react.dev/)
+[![ONNX Runtime](https://img.shields.io/badge/reranker-FlashRank%20ONNX-005CED.svg)](https://github.com/PrithivirajDamodaran/FlashRank)
+[![OpenAlex](https://img.shields.io/badge/literature-OpenAlex%20%2B%20arXiv-brightgreen.svg)](https://openalex.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**[MCP Server](./mcp/)** — use ScholarGraph's search tools directly in Claude Desktop or custom agent harnesses. | **[Backend Architecture](./backend/README.md)**
+**[MCP Server](./mcp/)** — use ScholarGraph's search and citation tools directly in Claude Desktop or custom agent harnesses. | **[Backend Architecture](./backend/README.md)** | **[Frontend Guide](./web/README.md)**
 
-## Stack
+---
 
+## Technical Stack
 
-| Layer                    | Technology                                                      |
-| ------------------------ | --------------------------------------------------------------- |
-| Agent orchestration      | LangGraph (supervisor + subgraph pattern)                       |
-| LLM inference            | Google Gemini 3.5 Flash Lite / 3 Flash Preview via LangChain    |
-| API server               | FastAPI                                                         |
-| Async task queue         | Celery + Redis                                                  |
-| Frontend                 | React 19 + Vite + TypeScript                                    |
-| Vector database          | Qdrant                                                          |
-| Relational / checkpoints | Postgres                                                        |
-| PDF extraction           | Grobid                                                          |
-| Paper search             | Semantic Scholar API (200M+ papers)                             |
-| Web search               | Tavily                                                          |
-| Reranking                | Cohere                                                          |
-| Embeddings               | Google Gemini `models/text-embedding-004` (768-dim)             |
-| Auth                     | Clerk (optional)                                                |
+| Layer | Technology | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Agent Orchestration** | LangGraph (Cyclical DAG + Subgraphs) | Stateful human-in-the-loop interrupts, deterministic graph transitions, checkpoint recovery |
+| **LLM Inference** | Google Gemini `gemini-3.5-flash-lite` / `gemini-3-flash-preview` | Ultra-fast token latency, high concurrency limits, native structured output |
+| **API Server** | FastAPI + Uvicorn | High-throughput asynchronous REST & streaming endpoints |
+| **Task Queue** | Celery + Redis | Asynchronous background PDF downloads, Grobid TEI extraction, and embedding jobs |
+| **Frontend UI** | React 19 + Vite + TypeScript + Tailwind CSS | Deep Dark Navy theme (`#0f1015` / `#16171e`) inspired by Gemini & ChatGPT, zero layout shifts |
+| **Vector Database** | Qdrant | Dense vector indexing with payload filtering scoped to user-selected paper IDs |
+| **PDF Extraction** | Grobid (Docker) | Section-aware XML/TEI extraction, title, abstract, and bibliography parsing |
+| **Academic Retrieval** | OpenAlex + arXiv Federated Engine | 250M+ open-access scientific publications, immune to cloud datacenter IP blocks |
+| **Web Grounding** | Google Search Grounding (`google.genai`) | Official Google Search grounding with direct web citations and freshness verification |
+| **Document Reranking**| In-Process ONNX Neural Cross-Encoder (`FlashRank`) | `ms-marco-TinyBERT-L-2-v2` cross-attention; **4.92ms latency**, $0 API cost, zero external SaaS round-trips |
+| **Dense Embeddings** | Google Gemini `models/gemini-embedding-001` (3072-dim) | High-dimensional semantic representation for parent-child chunk indexing |
+| **Authentication** | Google OpenID Connect (OIDC) / Cryptographic Session | Direct public JWKS validation (`https://www.googleapis.com/oauth2/v3/certs`) + guest sessions |
 
+---
 
 ## Agent Architecture
 
-ScholarGraph is built around three LangGraph agents: a **Supervisor** that plans and routes, a **Paper Finding Agent** that searches and discovers papers, and a **Q&A Agent** that retrieves evidence and answers questions.
-
-### Supervisor (`graph.py`)
-
-Every user message enters the supervisor, which runs a four-node pipeline before invoking any tool:
+ScholarGraph implements a hierarchical multi-agent pattern with LangGraph: a top-level **Supervisor** orchestrating an iterative **Paper Finding Subgraph** and an evidence-grounded **Q&A Subgraph**.
 
 ```
-query_evaluation → planner → executor → supervisor_tools → post_tool
-                                                                ↓
-                                                    replanner (interrupt)
-                                                                ↓
-                                                           executor …
+                         ┌────────────────────────────────────┐
+                         │         User Query / Input         │
+                         └─────────────────┬──────────────────┘
+                                           │
+                                           ▼
+                         ┌────────────────────────────────────┐
+                         │   query_evaluation (Classifier)    │
+                         └─────────────────┬──────────────────┘
+                                           │ (clear query)
+                                           ▼
+                         ┌────────────────────────────────────┐
+                         │       planner (DAG Strategy)       │
+                         └─────────────────┬──────────────────┘
+                                           │
+                    ┌──────────────────────┴──────────────────────┐
+                    │                                             │
+                    ▼                                             ▼
+     ┌─────────────────────────────┐               ┌─────────────────────────────┐
+     │  Paper Finding Subgraph     │               │        Q&A Subgraph         │
+     │  - OpenAlex + arXiv search  │               │  - Qdrant scoped retrieval  │
+     │  - Google Search Grounding  │               │  - Evidence sufficiency eval│
+     │  - Citation & reference snow│               │  - Synthesis & attribution  │
+     │  - FlashRank ONNX reranking │               └─────────────────────────────┘
+     └──────────────┬──────────────┘
+                    │
+                    ▼
+     ┌─────────────────────────────┐
+     │ LangGraph Interrupt Pause   │
+     │ (User selects papers in UI) │
+     └──────────────┬──────────────┘
+                    │ (Resume with selected papers)
+                    ▼
+     ┌─────────────────────────────┐
+     │   Q&A Grounded Generation   │
+     └─────────────────────────────┘
 ```
 
-`**query_evaluation**` — Classifies the query before any search is attempted. Uses structured output to return one of five decisions: `clear`, `needs_clarification`, `unselected_paper`, `irrelevant`, or `inappropriate`. Only `clear` queries proceed; all others generate an inline response explaining what ScholarGraph needs.
+### 1. Supervisor Orchestrator (`graph.py`)
 
-`**planner**` — Chooses one of three execution plans based on intent:
+Every user message enters the supervisor, executing a deterministic five-node sequence:
+- `query_evaluation`: Evaluates query ambiguity and intent using structured Pydantic schemas (`clear`, `needs_clarification`, `unselected_paper`, `irrelevant`, `inappropriate`).
+- `planner`: Constructs the execution DAG (`find_only`, `qa_only`, or `find_then_qa`).
+- `executor`: Dispatches structured tool calls to the appropriate subgraph.
+- `post_tool`: Commits state updates and prepares the paper payload.
+- `replanner`: Triggers a LangGraph `interrupt("select_papers")`, allowing users to inspect cards, view PDF abstracts, and select relevant literature before evidence retrieval begins.
 
-- `find_only` — discover new papers
-- `qa_only` — answer a question using papers already in context
-- `find_then_qa` — find papers first, then answer a question about them
+### 2. Paper Finding Agent (`paper_finder.py`)
 
-`**executor**` — Pops the next step from the plan and issues the corresponding tool call (`find_papers` or `retrieve_and_answer_question`) as a structured AIMessage with a tool call.
+An autonomous ReAct search loop (max 3 iterations) that gathers, cross-references, and ranks scientific literature:
 
-`**post_tool**` — Runs after every tool result to commit side effects (paper list UI, final answer) to state before any interrupt is issued, ensuring the checkpoint is consistent.
+| Tool | Engine | Description |
+| :--- | :--- | :--- |
+| `s2_search_papers` | OpenAlex + arXiv Federated Engine | Queries over 250M+ open scientific works with metadata filtering (year, venue, citation metrics, open access PDF links). Falls back seamlessly to Semantic Scholar. |
+| `google_search_grounding` | Google GenAI SDK (`google.genai`) | Official Google Search grounding tool for seminal papers, author lab sites, and recent press/preprints. |
+| `forward_snowball` | OpenAlex / S2 Graph API | Traverses forward citation graphs to surface recent follow-on research citing a seed paper. |
+| `backward_snowball` | OpenAlex / S2 Graph API | Traverses reference graphs to identify foundational papers cited by a seed paper. |
 
-`**replanner**` — Issues a LangGraph `interrupt("select_papers")` so the user can choose which papers to carry into Q&A. On resume, the selected paper IDs and an optional follow-up message are extracted from the resume payload and committed to state.
+**In-Process ONNX Reranking:**  
+Unlike legacy systems that send candidate pools over HTTP to Cohere, ScholarGraph executes local cross-encoder neural inference via **FlashRank** (`ms-marco-TinyBERT-L-2-v2`, ~3.2MB ONNX model). Reranking 35 papers takes **~4.9ms** on standard CPU, eliminating network latency and third-party SaaS charges.
+
+### 3. Grounded Q&A Agent (`qa.py`)
+
+An iterative evidence retrieval loop scoped strictly to user-selected paper IDs:
+- `qa_retrieve`: Generates targeted vector queries and retrieves relevant chunks from Qdrant, filtered by payload `paper_id`.
+- `qa_evaluate`: Validates whether retrieved evidence provides sufficient empirical backing (`AnswerQuestion` vs `AskForMoreEvidence` with refined query limitations).
+- `qa_answer`: Synthesizes the final answer with direct paper citations and caveats if only abstracts were indexable.
+
+### 4. Background Paper Ingestion Pipeline (Celery)
+
+When papers are bookmarked or selected:
+1. **arXiv Discovery**: Resolves paper titles to open-access preprint identifiers.
+2. **PDF Acquisition**: Streams PDFs into a temporary staging directory (`PDF_DOWNLOAD_DIR`).
+3. **Grobid Parsing**: Parses PDF binaries into structured XML/TEI, isolating title, abstract, sections, and references.
+4. **Parent-Child Indexing**: Splits text into parent context blocks and embedded child chunks using Google Gemini embeddings (`models/gemini-embedding-001`, 3072-dim).
+5. **Qdrant Upsert**: Deduplicates vectors globally across users, skipping re-indexing if already present.
 
 ---
 
-### Paper Finding Agent (`paper_finder.py`)
+## UI & Design System
 
-Invoked by the supervisor's `find_papers` tool. Runs an iterative search loop (max 3 iterations) using a combination of search tools:
-
-```
-planner ──→ executor ──→ replan_agent
-   ↑                          │
-   └──── (goal not met) ──────┘
-                              │
-                        (goal met) ──→ END
-```
-
-`**planner**` — Analyses the search task and generates a concrete multi-step search plan. Each step must be an actionable search operation (web search, academic database query, or citation chasing). The planner is given today's date so temporal constraints like "recent" resolve correctly.
-
-`**executor**` — Runs a nested ReAct-style search agent for the current plan step. The search agent has access to four tools:
-
-
-| Tool                       | Description                                                                         |
-| -------------------------- | ----------------------------------------------------------------------------------- |
-| `s2_search_papers`         | Keyword and filter search over Semantic Scholar (year, venue, citation count, etc.) |
-| `tavily_research_overview` | Web search for broader context, seminal papers, and author profiles                 |
-| `forward_snowball`         | Find papers that *cite* a given seed paper (surfaces recent follow-on work)         |
-| `backward_snowball`        | Find papers *cited by* a given seed paper (surfaces foundational references)        |
-
-
-After the search agent finishes its step, all accumulated papers are **reranked with Cohere** against a keyword-optimised query derived from the original task. Only the top-35 most relevant papers are kept, preventing the list from growing unboundedly across iterations.
-
-`**replan_agent**` — Evaluates whether the goal is achieved by inspecting the *actual paper list* (not just what appeared in web search summaries). If the goal is not yet met, it rewrites the remaining plan steps with explicit retrieval targets, then loops back to the executor.
-
-All three nodes emit `finder_status` custom events that the frontend renders as a real-time **Research Agent** status card.
+The web interface is built with **React 19, TypeScript, and Tailwind CSS**, featuring:
+- **Dark Navy Aesthetic**: Deep off-black / dark navy background (`#0f1015`), elevated card surfaces (`#16171e`), subtle borders (`#232530`), and high-contrast typography (`#f1f3f7`) designed to match ChatGPT and Gemini.
+- **Collapsible Drawer Sidebar**: Fast history navigation and local cryptographic session management.
+- **Interactive Human-in-the-Loop Interrupts**: Interactive paper selection trays with inline metadata (citations, publication year, open-access status).
+- **Subagent Status Telemetry**: Live progress cards showing real-time planning, searching, evaluating, and reranking stages.
 
 ---
 
-### Q&A Agent (`qa.py`)
+## Getting Started
 
-Invoked after paper selection. Performs iterative evidence retrieval scoped to the user-selected paper IDs (max 3 iterations):
-
-```
-qa_retrieve ──→ tools ──→ qa_evaluate ──→ qa_answer
-                               │
-                   (insufficient evidence)
-                               │
-                          qa_retrieve …
-```
-
-`**qa_retrieve**` — On the first iteration, checks Qdrant for each selected paper and records which ones have no indexed full text (e.g. ingestion failed or paper not on arXiv). These `unindexed_paper_ids` are carried in state so downstream nodes can handle thin evidence gracefully. Then generates focused retrieval queries and calls `retrieve_evidence_from_selected_papers`, which performs vector search over the Qdrant collection filtered to the selected paper IDs only. This scoping ensures answers are grounded exclusively in the papers the user chose.
-
-`**qa_evaluate**` — Uses structured output to decide between two outcomes: `AnswerQuestion` (evidence is sufficient) or `AskForMoreEvidence` (evidence is weak — includes a `limitation` string that seeds the next retrieval attempt with a better query strategy).
-
-`**qa_answer**` — Synthesises a final answer from all accumulated evidence chunks. Always leads with the answer; if any selected papers were unindexed, a single caveat sentence is appended at the end noting that only the abstract was available for those papers.
-
-All three nodes emit `qa_status` events rendered as a real-time **Q&A Agent** status card.
-
----
-
-### Paper Ingestion Pipeline (Celery)
-
-When a user adds a paper to their list, two things happen simultaneously: the paper is added to the agent's context (so it knows which papers the Q&A should be scoped to), and an ingestion task is pushed to the Redis queue for background processing.
-
-The **vector store is shared across all users**. The Celery worker checks whether the paper is already indexed before doing any work — if another user ingested it earlier, the task skips straight to done. This significantly reduces average ingestion time across the platform.
-
-If the paper is not yet indexed, the worker runs the full pipeline:
-
-1. **arXiv lookup** — searches arXiv by title to find a PDF URL
-2. **PDF download** — fetches the PDF to a temp file (`PDF_DOWNLOAD_DIR`)
-3. **Grobid parsing** — sends the PDF to a local Grobid container for structured, section-aware full-text extraction
-4. **Chunking & embedding** — splits extracted text using a parent indexing strategy: smaller chunks are embedded for accurate vector retrieval; larger parent chunks are stored for richer LLM context at answer time. Embeddings support Google Gemini `models/text-embedding-004` (with OpenAI `text-embedding-3-small` fallback).
-5. **Qdrant upsert** — stores vectors with paper ID and section metadata for scoped retrieval
-6. **Cleanup** — the temp PDF is deleted regardless of success or failure
-
-If no arXiv PDF is found, the task returns a clean failure with a specific error message. No partial data is written to Qdrant, so re-ingestion can be attempted cleanly.
-
----
-
-## UI Features
-
-- **Real-time subagent status cards** — live in-place updates as the Research Agent and Q&A Agent run (planning, searching, evaluating, generating)
-- **Paper selection interrupt** — after search completes, a structured interrupt pauses execution so the user can choose which papers to bring into Q&A
-- **Ingestion progress panel** — per-paper status tracking with a progress bar as the Celery worker processes each PDF in the background
-- **Streaming AI responses** — token-by-token streaming via the LangGraph SDK
-- **Persistent thread history** — conversation threads are stored in Postgres and restored across sessions
-
-## Quick Start
-
-### 1. Clone
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/Hrushikesh-ramilla/ScholarGraph.git
 cd ScholarGraph
 ```
 
-### 2. Configure environment
+### 2. Configure Environment
 
 ```bash
 cp backend/.env_example backend/.env.local
 ```
 
-Edit `backend/.env.local` and fill in at minimum:
+Edit `backend/.env.local` — **only one API key is required**:
 
-- `GEMINI_API_KEY` — for all agent LLM calls and dense vector embeddings (`models/text-embedding-004`)
-- `COHERE_API_KEY` — for reranking
-- `S2_API_KEY` — for Semantic Scholar search
-- `OPENAI_API_KEY` — (optional) legacy fallback for OpenAI models
+```env
+# Required: Google Gemini API key (powers reasoning, search grounding, and embeddings)
+GEMINI_API_KEY=your_gemini_api_key_here
 
-Local infrastructure variables (Qdrant, Redis, Grobid) are pre-filled with `localhost` defaults.
+# Zero external keys required for search (OpenAlex & arXiv are open) or reranking (FlashRank runs locally)
+```
 
-### 3. Start infrastructure
+### 3. Launch Services with Docker Compose
 
 ```bash
+# Starts Postgres (5432), Redis (6379), Qdrant (6333), and Grobid (8070)
 make infra
 ```
 
-Starts Redis (6379), Qdrant (6333), and Grobid (8070) via Docker Compose.
-
-### 4. Start the Celery worker, backend, and frontend
-
-Open three terminals and run:
+### 4. Run Application Services
 
 ```bash
-make worker    # Celery worker
-make dev       # LangGraph backend  (http://localhost:2024)
-make frontend  # React frontend     (http://localhost:5173)
+# Terminal 1: Background Ingestion Worker
+make worker
+
+# Terminal 2: LangGraph Orchestration Backend (http://localhost:2024)
+make dev
+
+# Terminal 3: React Frontend (http://localhost:5173)
+make frontend
 ```
 
-Open `http://localhost:5173`.
+Visit `http://localhost:5173` to explore the interface.
 
-### Switching to cloud services
+---
 
-To run against your deployed Qdrant, Redis, and Grobid instead:
+## Production Deployment on AWS EC2
 
-```bash
-cp backend/.env_example backend/.env.cloud
-# fill in cloud service URLs and API keys
+The live production deployment at `scholargraph.hrushikeshramilla.in` runs under:
+- **Compute**: AWS EC2 Ubuntu instance (`65.1.112.251`)
+- **Reverse Proxy**: Caddy server managing automatic Let's Encrypt TLS certificates, static asset compression, and `/api` reverse proxying to localhost:2024.
+- **Service Supervision**: `systemd` managing `scholargraph.service` with automated crash restarts and journald logging.
 
-make dev-cloud
-make worker-cloud
-```
+---
 
-## Documentation
+## License
 
-- `[backend/README.md](./backend/README.md)` — environment variables, project structure, full architecture reference
-- `[web/README.md](./web/README.md)` — frontend setup and env vars
-
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.

@@ -73,7 +73,7 @@ PF_REPLAN_SYSTEM = """
       Do NOT include steps like "review results", "filter papers", "select seed papers", or "compare papers" —
       result filtering and ranking is handled automatically after each step.
     - If a prior web search step named specific papers/authors, make the next database step explicit:
-      e.g. "Search Semantic Scholar for papers by <author> to retrieve them into the paper list."
+      e.g. "Search open academic literature (OpenAlex + arXiv) for papers by <author> to retrieve them into the paper list."
       This makes clear to your assistant that retrieval — not just discovery — is the goal.
     - Never use citation chasing (snowball) unless the user explicitly asks for related/citing/cited papers.
     - The completed steps should not be included in the new plan.
@@ -98,9 +98,9 @@ PF_SEARCH_AGENT_SYSTEM = """
     Your goal is to utilize the provided tools to finish the current step only.
 
     You have access to multiple search methods:
-    1. General web search (tavily_research_overview): Use when your goal is related to using general web search to identify famous papers or understand context etc.
+    1. Google Search Grounding (google_search_grounding): Use when your goal is related to using live Google Search to identify seminal papers, explore background context, or find verified literature.
 
-    2. Academic database search (s2_search_papers): Search Semantic Scholar's database of 200M+ papers.
+    2. Academic database search (s2_search_papers): Search federated academic database (OpenAlex + arXiv, 250M+ papers).
        Use keyword queries, filters by year, venue, citation count, etc. to find relevant papers. Pick this tool when the goal prompts you to search academic database.
 
     3. Citation chasing tools:
@@ -111,7 +111,7 @@ PF_SEARCH_AGENT_SYSTEM = """
     !! IMPORTANT — what counts as a retrieved paper !!
     A paper only enters the paper list when it is returned by a tool call (s2_search_papers,
     forward_snowball, or backward_snowball). Papers mentioned by name in a web search summary
-    (tavily_research_overview) are NOT in the list — they are just text. Do NOT treat paper
+    (google_search_grounding) are NOT in the list — they are just text. Do NOT treat paper
     titles or names that appear in the "Completed Steps" section below as already retrieved.
     The ONLY ground truth for what has been retrieved is the "Current papers in your list"
     section. If that list is empty or missing papers you need, you must call a search tool.
@@ -172,8 +172,8 @@ QA_QUERY_OPTIMIZATION_SYSTEM = (
 QUERY_EVALUATION_SYSTEM = """You are a query evaluator for ScholarGraph, an AI research assistant that helps users discover and understand academic papers.
 
 ## What ScholarGraph can do
-1. **Find papers** — search Semantic Scholar for academic papers on a research topic
-2. **Answer questions** — retrieve evidence from user-selected papers and answer scientific questions
+1. **Find papers** — search open-access academic literature (OpenAlex, arXiv, and peer-reviewed journals across 250M+ papers) on any research topic
+2. **Answer questions** — retrieve evidence from user-selected papers and answer scientific questions with precise citations
 
 ## Papers currently in context ({paper_count} total — [SELECTED] = chosen for QA)
 {papers_text}
@@ -307,12 +307,12 @@ Based on the above, provide a clear and direct answer to the user's question."""
 # Evaluation
 # ══════════════════════════════════════════════════════════════════════════════
 
-LLM_AS_JUDGE_PROMPT="""You are an expert AI evaluator assessing the performance of AIRA, an AI research assistant.
+LLM_AS_JUDGE_PROMPT="""You are an expert AI evaluator assessing the performance of ScholarGraph, an AI research assistant.
 
-Evaluate AIRA's generated answer based on the provided Question, Ground Truth, and Retrieved Evidence.
+Evaluate ScholarGraph's generated answer based on the provided Question, Ground Truth, and Retrieved Evidence.
 
 IMPORTANT CONTEXT:
-The Ground Truth Answer is highly extractive (designed for Token F1 scoring) and is NOT user-friendly. Do not penalize AIRA for providing a comprehensive, readable answer. A high-quality AIRA answer should be superior in synthesis to the Ground Truth while remaining strictly factually aligned with it.
+The Ground Truth Answer is highly extractive (designed for Token F1 scoring) and is NOT user-friendly. Do not penalize ScholarGraph for providing a comprehensive, readable answer. A high-quality ScholarGraph answer should be superior in synthesis to the Ground Truth while remaining strictly factually aligned with it.
 
 ### INPUT DATA ###
 <Question>
@@ -327,18 +327,18 @@ The Ground Truth Answer is highly extractive (designed for Token F1 scoring) and
 {ground_truth_answer}
 </Ground_Truth_Answer>
 
-<AIRA_Retrieved_Evidence>
+<ScholarGraph_Retrieved_Evidence>
 {retrieved_evidence}
-</AIRA_Retrieved_Evidence>
+</ScholarGraph_Retrieved_Evidence>
 
-<AIRA_Generated_Answer>
+<ScholarGraph_Generated_Answer>
 {generated_answer}
-</AIRA_Generated_Answer>
+</ScholarGraph_Generated_Answer>
 
 ### EVALUATION CRITERIA (1-5 Scale) ###
-1. Factual Accuracy & Alignment: Does AIRA's answer capture the core semantic meaning and facts of the Ground Truth Answer without hallucinating?
-2. Synthesis & User-Friendliness: How well did AIRA translate the raw information into a clear, readable response?
-3. Comprehensiveness: Does AIRA's answer fully address the question using the available evidence?
+1. Factual Accuracy & Alignment: Does ScholarGraph's answer capture the core semantic meaning and facts of the Ground Truth Answer without hallucinating?
+2. Synthesis & User-Friendliness: How well did ScholarGraph translate the raw information into a clear, readable response?
+3. Comprehensiveness: Does ScholarGraph's answer fully address the question using the available evidence?
 
 ### OUTPUT FORMAT ###
 Output ONLY a valid JSON object with the following structure. Do not include markdown formatting or any other text.

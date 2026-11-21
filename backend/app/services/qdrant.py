@@ -26,14 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_embeddings():
-    """Initializes embeddings, natively supporting Google Gemini (models/text-embedding-004)
+    """Initializes embeddings, natively supporting Google Gemini (models/gemini-embedding-001)
     as well as OpenAI embeddings, with safe offline fallback for testing.
     """
     model_name = settings.EMBEDDING_MODEL_NAME
     if (
         model_name.startswith("models/")
         or "gemini" in model_name.lower()
-        or "text-embedding-004" in model_name
+        or "text-embedding" in model_name
         or (not settings.OPENAI_API_KEY and settings.GEMINI_API_KEY)
     ):
         try:
@@ -42,8 +42,6 @@ def get_embeddings():
                 model_name
                 if model_name.startswith("models/")
                 else f"models/{model_name}"
-                if "text-embedding" in model_name
-                else "models/text-embedding-004"
             )
             return GoogleGenerativeAIEmbeddings(
                 model=g_model, google_api_key=settings.GEMINI_API_KEY or None
@@ -57,7 +55,7 @@ def get_embeddings():
     except Exception as e:
         logger.warning("Failed to initialize OpenAIEmbeddings: %s", e)
         from langchain_core.embeddings import FakeEmbeddings
-        return FakeEmbeddings(size=settings.QDRANT_VECTOR_SIZE or 768)
+        return FakeEmbeddings(size=settings.QDRANT_VECTOR_SIZE or 3072)
 
 
 embeddings = get_embeddings()

@@ -13,7 +13,7 @@ import {
 import { ChevronUp, LogOut, MessageSquare, PanelRightOpen, SquarePen } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
-import { useUser, useClerk } from "@clerk/clerk-react";
+import { useAppUser as useUser, useAppClerk as useClerk } from "@/lib/auth";
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -67,7 +67,7 @@ function ThreadList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-track]:bg-transparent px-2 py-2">
+    <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sidebar-border [&::-webkit-scrollbar-track]:bg-transparent px-2 py-2">
       {threads.map((t) => {
         let itemText = t.thread_id;
         if (
@@ -95,8 +95,8 @@ function ThreadList({
             className={cn(
               "w-full text-left rounded-md px-3 py-2 mb-0.5 transition-colors",
               isActive
-                ? "bg-accent text-accent-foreground"
-                : "hover:bg-accent/60 text-foreground",
+                ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80",
             )}
           >
             <p className="truncate text-sm leading-snug">{itemText}</p>
@@ -128,7 +128,21 @@ function UserSection() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="border-t border-sidebar-border px-3 py-3 flex items-center justify-between text-xs text-muted-foreground bg-sidebar">
+        <div className="flex items-center gap-2">
+          <div className="size-6 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-semibold text-[10px]">
+            SG
+          </div>
+          <span className="font-medium text-sidebar-foreground">Local Session</span>
+        </div>
+        <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-400 font-mono">
+          Online
+        </span>
+      </div>
+    );
+  }
 
   const initials = [user.firstName, user.lastName]
     .filter(Boolean)
@@ -213,7 +227,7 @@ function SidebarContent({
           <Button
             size="icon"
             variant="ghost"
-            className="size-8"
+            className="size-8 hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground"
             onClick={onNewThread}
             title="New conversation"
           >
@@ -222,7 +236,7 @@ function SidebarContent({
           <Button
             size="icon"
             variant="ghost"
-            className="size-8"
+            className="size-8 hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground"
             onClick={onClose}
             title="Close sidebar"
           >
@@ -261,7 +275,7 @@ export default function ThreadHistory() {
   return (
     <>
       {/* Desktop: fixed sidebar */}
-      <div className="hidden lg:flex flex-col border-r border-border h-screen w-[260px] shrink-0 bg-muted/20">
+      <div className="hidden lg:flex flex-col border-r border-sidebar-border h-screen w-[260px] shrink-0 bg-sidebar text-sidebar-foreground">
         <SidebarContent
           threads={threads}
           threadsLoading={threadsLoading}
@@ -279,7 +293,7 @@ export default function ThreadHistory() {
             setChatHistoryOpen(open);
           }}
         >
-          <SheetContent side="left" className="flex flex-col p-0 w-[260px]">
+          <SheetContent side="left" className="flex flex-col p-0 w-[260px] bg-sidebar text-sidebar-foreground border-sidebar-border">
             <SheetHeader className="px-3 py-2.5 border-b border-border/60">
               <SheetTitle className="text-sm font-semibold px-1">
                 Conversations

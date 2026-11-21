@@ -8,7 +8,7 @@ from langchain.messages import HumanMessage, SystemMessage
 from langgraph.graph import START, END, StateGraph
 from app.agent.states import PaperFinderState
 from langgraph.prebuilt import ToolNode
-from app.tools.search import s2_search_papers, tavily_research_overview, forward_snowball, backward_snowball
+from app.tools.search import s2_search_papers, google_search_grounding, tavily_research_overview, forward_snowball, backward_snowball
 from app.core.config import settings
 from app.agent.utils import get_paper_info_text
 from app.agent.prompts import (
@@ -19,27 +19,19 @@ from app.agent.prompts import (
     PF_SEARCH_AGENT_SYSTEM,
     PF_EXECUTOR_USER,
 )
-from rerankers import Reranker, Document
+from flashrank import Ranker, RerankRequest
 from app.core.schema import S2Paper
 from pydantic import BaseModel, Field
-from typing import List, Tuple, Annotated
+from typing import List, Tuple, Annotated, Union
 from langchain.agents import AgentState
 from langgraph.prebuilt import tools_condition
 
 logger = logging.getLogger(__name__)
 
+# Initialize FlashRank in-process ONNX neural cross-encoder
+ranker = Ranker(model_name="ms-marco-TinyBERT-L-2-v2", cache_dir="./cache")
 
-if not settings.COHERE_API_KEY:
-    logger.warning("COHERE_API_KEY not set. Reranking will be skipped.")
-    ranker = None
-else:
-    try:
-        ranker = Reranker("cohere", api_key=settings.COHERE_API_KEY)
-    except Exception as e:
-        logger.error("Failed to initialize Cohere reranker: %s", e)
-        ranker = None
-
-tools = [tavily_research_overview, s2_search_papers, forward_snowball, backward_snowball]
+tools = [google_search_grounding, s2_search_papers, forward_snowball, backward_snowball]
 
 MAX_ITER = 3
 MAX_PAPER_LIST_LENGTH = 35
@@ -156,7 +148,11 @@ async def replan_agent(state: PaperFinderState):
             "plan_reasoning": "Continuing with adjusted plan due to replanning error",
         }
 
-def flexible_reducer(current: list, update: list) -> list:
+from app.agent.paper_finder_fast import Replace
+
+def flexible_reducer(current: list, update: Union[list, "Replace"]) -> list:
+    if isinstance(update, Replace):
+        return update.value
     seen = {p.paperId for p in current}
     return current + [p for p in update if p.paperId not in seen]
 
@@ -193,23 +189,55 @@ async def rerank_papers(papers: List[S2Paper], query: str) -> List[S2Paper]:
     if not papers:
         return []
 
-    if not query or not query.strip() or ranker is None:
+    if not query or not query.strip():
         return papers[:MAX_PAPER_LIST_LENGTH]
 
     try:
-        docs = [
-            Document(
-                text=f"Title: {p.title or 'No title'}\nAbstract: {p.abstract or 'No abstract'}\nAuthors: {p.authors or []}",
-                doc_id=str(p.paperId),
-                metadata=p.model_dump(),
-            )
+        passages = [
+            {
+                "id": str(p.paperId),
+                "text": f"Title: {p.title or ''}\nAbstract: {p.abstract or ''}",
+                "meta": p.model_dump(),
+            }
             for p in papers
         ]
-        reranked = await asyncio.to_thread(ranker.rank, query=query, docs=docs)
-        return [S2Paper.model_validate(m.document.metadata) for m in reranked.top_k(k=MAX_PAPER_LIST_LENGTH)]
+        reranked = ranker.rerank(RerankRequest(query=query, passages=passages))
+        return [S2Paper.model_validate(r["meta"]) for r in reranked[:MAX_PAPER_LIST_LENGTH]]
     except Exception as e:
         logger.error("Reranking failed: %s", e)
         return papers[:MAX_PAPER_LIST_LENGTH]
+
+async def rerank_node(state: SearchAgentState):
+    papers = state.get("papers", [])
+    iter = state.get("iter", 0) + 1
+
+    if not papers:
+        return {"iter": iter}
+
+    user_query = state.get("rerank_query", "")
+
+    if not user_query or not user_query.strip():
+        logger.warning("Skipping rerank: no query provided")
+        return {"papers": Replace(papers[:MAX_PAPER_LIST_LENGTH]), "iter": iter}
+
+    try:
+        passages = [
+            {
+                "id": str(p.paperId),
+                "text": f"Title: {p.title or ''}\nAbstract: {p.abstract or ''}",
+                "meta": p.model_dump(),
+            }
+            for p in papers
+        ]
+        logger.debug("Reranking %d papers with query: %s...", len(passages), user_query[:50])
+        reranked = ranker.rerank(RerankRequest(query=user_query, passages=passages))
+        final_papers = [S2Paper.model_validate(r["meta"]) for r in reranked[:MAX_PAPER_LIST_LENGTH]]
+        logger.info("Reranking successful: %d papers", len(final_papers))
+    except Exception as e:
+        logger.error("Reranking failed: %s: %s", type(e).__name__, e)
+        final_papers = papers[:MAX_PAPER_LIST_LENGTH]
+
+    return {"papers": Replace(final_papers), "iter": iter}
 
 search_graph = StateGraph[SearchAgentState, None, SearchAgentState, SearchAgentState](SearchAgentState)
 search_graph.add_node("search_agent", search_agent_node)

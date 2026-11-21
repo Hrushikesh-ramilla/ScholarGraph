@@ -18,8 +18,8 @@ export function ScholarGraphSVG({
     >
       <defs>
         <linearGradient id="scholarGraphGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#222222" />
-          <stop offset="100%" stopColor="#aaaaaa" />
+          <stop offset="0%" stopColor="#818cf8" />
+          <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
       </defs>
       <path

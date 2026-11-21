@@ -23,21 +23,21 @@ function SelectedPapersContent() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">My Paper List</h2>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+            <h2 className="text-lg font-semibold text-foreground">My Paper List</h2>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs font-medium">
               {selectedPapers.size}
             </span>
           </div>
-          <p className="text-xs text-gray-500">Papers available to the research assistant</p>
+          <p className="text-xs text-muted-foreground">Papers available to the research assistant</p>
         </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setSelectedPapersOpen(false)}
-          className="h-8 w-8 p-0"
+          className="h-8 w-8 p-0 hover:bg-secondary text-muted-foreground hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -47,9 +47,9 @@ function SelectedPapersContent() {
       <div className="flex-1 overflow-y-auto p-4">
         {papersArray.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4 border border-border">
               <svg
-                className="w-8 h-8 text-gray-400"
+                className="w-8 h-8 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -62,10 +62,10 @@ function SelectedPapersContent() {
                 />
               </svg>
             </div>
-            <h3 className="text-sm font-medium text-gray-900 mb-1">
+            <h3 className="text-sm font-medium text-foreground mb-1">
               No papers in your list
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               Add papers from search results to make them available to the research assistant
             </p>
           </div>

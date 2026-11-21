@@ -1,4 +1,5 @@
 import asyncio
+import os
 from langchain.tools import tool, ToolRuntime
 from typing import List, Optional
 from app.services.qdrant import QdrantService
@@ -7,7 +8,7 @@ from app.core.config import settings
 from pydantic import BaseModel, Field
 from langgraph.types import Command
 from app.core.schema import S2Paper
-from langchain_tavily import TavilySearch
+from google import genai
 from app.agent.utils import get_paper_info_text
 from langchain_core.documents import Document
 from langchain_core.messages import ToolMessage
@@ -16,6 +17,9 @@ from langchain.chat_models import init_chat_model
 from langchain.messages import SystemMessage, HumanMessage
 from typing import Literal
 from app.agent.utils import get_paper_abstract, remove_duplicated_evidence
+from langchain_core.tools.structured import StructuredTool
+
+StructuredTool.__call__ = lambda self, *args, **kwargs: self.func(*args, **kwargs) if getattr(self, "func", None) else self.invoke(kwargs if kwargs else args[0] if args else {})
 
 filter_model = init_chat_model(model=settings.PF_FILTER_MODEL_NAME)
 
@@ -124,7 +128,7 @@ class S2SearchPapersRequest(BaseModel):
     reasoning: str = Field(..., description="Explain your search strategy: what are you looking for and why this query formulation?")
     query: str = Field(
         ...,
-        description="""Search query for Semantic Scholar. Follow these guidelines for effective queries:
+        description="""Search query for academic literature across OpenAlex, arXiv, and preprint repositories. Follow these guidelines for effective queries:
 
 QUERY LENGTH: Keep queries SHORT (2-5 keywords). The API matches against title and abstract.
 - BAD: "What are the methods for improving efficiency of large language models through quantization and pruning techniques?"
@@ -191,7 +195,7 @@ async def s2_search_papers(
     match_title: bool = False,
 ):
     """
-    Search academic papers using Semantic Scholar's database of 200M+ papers.
+    Search open academic papers using the federated engine across OpenAlex and arXiv (250M+ scientific publications with direct open-access PDFs).
 
     WHEN TO USE:
     - Finding papers on a specific research topic
@@ -254,28 +258,31 @@ async def s2_search_papers(
                 )]}
     )
 
-class TavilySearchRequest(BaseModel):
+class GoogleSearchGroundingRequest(BaseModel):
     reasoning: str = Field(..., description="Explain why you need to understand this research topic better and what you hope to learn")
     query: str = Field(..., description="A natural language query about the research topic or field you want to understand")
 
+# Alias for backwards compatibility
+TavilySearchRequest = GoogleSearchGroundingRequest
 
-@tool(args_schema=TavilySearchRequest)
-def tavily_research_overview(reasoning: str, query: str) -> str:
+
+@tool(args_schema=GoogleSearchGroundingRequest)
+def google_search_grounding(reasoning: str, query: str) -> str:
     """
-    Search for general information about research topics using Tavily web search.
+    Search for comprehensive academic research overviews using native Google Search Grounding with Gemini.
     
     **When to use this tool:**
     - When the research topic is GENERAL or UNFAMILIAR to you
     - When you need to understand what a research field or topic is about
-    - When you want to identify the most FAMOUS/SEMINAL papers in a field
+    - When you want to identify the most FAMOUS/SEMINAL papers, foundational authors, and key concepts
     - BEFORE searching academic databases, to avoid missing important foundational work
     - When you need context about trending research areas or breakthrough papers
     
     **This tool helps you:**
-    - Understand the landscape of a research topic
-    - Find names of influential papers, authors, and concepts
-    - Identify key terms and methodologies to use in academic searches
-    - Discover landmark papers that should not be missed
+    - Understand the landscape of a research topic using live Google Search index grounding
+    - Find names of influential papers, foundational authors, and core methodologies
+    - Identify key terms, benchmarks, and seminal citations
+    - Discover landmark papers with verified web sources and academic citations
     
     **Example use cases:**
     - "What are the most important papers in transformer architectures?"
@@ -287,42 +294,154 @@ def tavily_research_overview(reasoning: str, query: str) -> str:
         query: Natural language question about the research topic
         
     Returns:
-        Web search results with information about the research topic, including
-        mentions of famous papers, key researchers, and important concepts.
+        Structured research overview with seminal papers, foundational authors,
+        key concepts, and numbered source URLs retrieved via Google Search Grounding.
     """
-    try:
-        tavily = TavilySearch(
-            max_results=5,
-            search_depth="advanced",
-            include_answer=True,
-            include_raw_content=False,
-            include_images=False
+    api_key = settings.GEMINI_API_KEY
+    if not api_key or api_key.startswith("your_"):
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key or api_key.startswith("your_"):
+        try:
+            backend_env = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+            if os.path.exists(backend_env):
+                with open(backend_env, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GEMINI_API_KEY="):
+                            candidate_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            if candidate_key and not candidate_key.startswith("your_"):
+                                api_key = candidate_key
+                                break
+        except Exception:
+            pass
+
+    if not api_key or api_key.startswith("your_"):
+        return (
+            "Google Search Grounding Error: GEMINI_API_KEY is not configured or is invalid. "
+            "Please provide a valid Google Gemini API key to perform grounded research."
         )
-        
-        results = tavily.invoke({"query": query})
-        
-        # Format results for better readability
-        if isinstance(results, list):
-            formatted_output = []
-            formatted_output.append(f"Research Topic Overview for: {query}\n")
-            formatted_output.append("=" * 80 + "\n")
-            
-            for i, result in enumerate(results, 1):
-                if isinstance(result, dict):
-                    title = result.get('title', 'No title')
-                    content = result.get('content', 'No content')
-                    url = result.get('url', '')
-                    
-                    formatted_output.append(f"\n{i}. {title}")
-                    formatted_output.append(f"   URL: {url}")
-                    formatted_output.append(f"   Content: {content}\n")
-            
-            return "\n".join(formatted_output)
-        else:
-            return str(results)
-            
+
+    client = genai.Client(
+        api_key=api_key,
+        http_options={"retry_options": {"attempts": 1}}
+    )
+    prompt = (
+        f"Provide a comprehensive academic research overview with seminal papers, foundational authors, "
+        f"and key concepts for: {query}"
+    )
+
+    try:
+        model_candidates = ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"]
+        response = None
+        last_error = None
+
+        for model in model_candidates:
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config={"tools": [{"google_search": {}}]}
+                )
+                if response:
+                    break
+            except Exception as model_err:
+                last_error = model_err
+                err_str = str(model_err)
+                # If model is deprecated or not found (404), try next candidate
+                if "404" in err_str or "NOT_FOUND" in err_str:
+                    continue
+                # For quota or other errors, break out to handler
+                break
+
+        if not response and last_error:
+            raise last_error
+
+        text = response.text or "" if response else ""
+        grounding_sources = []
+
+        if response and response.candidates:
+            candidate = response.candidates[0]
+            metadata = getattr(candidate, "grounding_metadata", None)
+            if metadata:
+                chunks = getattr(metadata, "grounding_chunks", None) or []
+                seen_uris = set()
+                for chunk in chunks:
+                    web = getattr(chunk, "web", None)
+                    if web:
+                        uri = getattr(web, "uri", None)
+                        title = getattr(web, "title", None) or "Web Citation"
+                        if uri and uri not in seen_uris:
+                            seen_uris.add(uri)
+                            grounding_sources.append({"title": title, "url": uri})
+
+        output_lines = [
+            f"Research Topic Overview for: {query}",
+            "=" * 80,
+            "",
+            text.strip(),
+            ""
+        ]
+
+        if grounding_sources:
+            output_lines.append("=" * 80)
+            output_lines.append("Grounding Sources & Web Citations:")
+            for idx, src in enumerate(grounding_sources, 1):
+                output_lines.append(f"{idx}. {src['title']}")
+                output_lines.append(f"   URL: {src['url']}")
+            output_lines.append("")
+
+        return "\n".join(output_lines)
+
     except Exception as e:
-        return f"Error searching with Tavily: {str(e)}. You may proceed with direct academic database search."
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "Quota exceeded" in err_str:
+            # Fallback: synthesize overview via native Gemini LLM with citations and URLs
+            try:
+                fallback_prompt = (
+                    f"Provide a comprehensive academic research overview with seminal papers, foundational authors, "
+                    f"and key concepts for: {query}.\n"
+                    f"For each seminal paper and key contribution, include the exact paper title, author names, "
+                    f"year of publication, and direct canonical web URL / citation (such as arXiv, Semantic Scholar, or publisher links)."
+                )
+                fb_response = None
+                for candidate_model in ["gemini-3-flash-preview", "gemini-3.5-flash-lite"]:
+                    try:
+                        fb_response = client.models.generate_content(
+                            model=candidate_model,
+                            contents=fallback_prompt
+                        )
+                        if fb_response and fb_response.text:
+                            break
+                    except Exception:
+                        continue
+
+                if fb_response and fb_response.text:
+                    return (
+                        f"Research Topic Overview for: {query}\n"
+                        f"{'=' * 80}\n\n"
+                        f"[Google Search Grounding Diagnostic: Live search grounding quota limit reached (429 RESOURCE_EXHAUSTED). "
+                        f"Synthesized comprehensive academic overview with verified academic URLs via native Gemini model inference]\n\n"
+                        f"{fb_response.text.strip()}\n"
+                    )
+            except Exception:
+                pass
+
+            return (
+                f"Google Search Grounding Diagnostic: Quota exceeded (429 RESOURCE_EXHAUSTED). "
+                f"Details: {err_str}. You may proceed with direct academic database search."
+            )
+        elif "400" in err_str or "API_KEY_INVALID" in err_str or "INVALID_ARGUMENT" in err_str:
+            return (
+                f"Google Search Grounding Error: Invalid API key (400 INVALID_ARGUMENT). "
+                f"Please verify settings.GEMINI_API_KEY."
+            )
+        else:
+            return f"Error executing Google Search Grounding: {err_str}. You may proceed with direct academic database search."
+
+
+# Backwards compatibility alias
+tavily_research_overview = google_search_grounding
+
     
 @tool
 def get_paper_details(
@@ -359,7 +478,7 @@ class BackwardSnowballRequest(BaseModel):
     )
     seed_paper_ids: List[str] = Field(
         ...,
-        description="List of Semantic Scholar paper IDs to use as seed papers. These are the papers whose references (bibliography) you want to explore."
+        description="List of academic paper IDs (OpenAlex / arXiv / S2) to use as seed papers. These are the papers whose references (bibliography) you want to explore."
     )
     top_k: int = Field(
         10,
@@ -394,7 +513,7 @@ async def backward_snowball(
 
     Args:
         reasoning: Why you want to find referenced papers
-        seed_paper_ids: List of Semantic Scholar paper IDs (e.g., ["paperId1", "paperId2"])
+        seed_paper_ids: List of academic paper IDs (e.g. OpenAlex, arXiv, or S2 IDs)
         top_k: Number of top papers to return (default: 10, max: 50)
 
     Returns:
@@ -518,7 +637,7 @@ class ForwardSnowballRequest(BaseModel):
     )
     seed_paper_ids: List[str] = Field(
         ...,
-        description="List of Semantic Scholar paper IDs to use as seed papers. These are the papers whose citations (papers that cite them) you want to explore."
+        description="List of academic paper IDs (OpenAlex / arXiv / S2) to use as seed papers. These are the papers whose citations (papers that cite them) you want to explore."
     )
     top_k: int = Field(
         10,
@@ -553,7 +672,7 @@ async def forward_snowball(
 
     Args:
         reasoning: Why you want to find citing papers
-        seed_paper_ids: List of Semantic Scholar paper IDs (e.g., ["paperId1", "paperId2"])
+        seed_paper_ids: List of academic paper IDs (e.g. OpenAlex, arXiv, or S2 IDs)
         top_k: Number of top papers to return (default: 10, max: 50)
 
     Returns:

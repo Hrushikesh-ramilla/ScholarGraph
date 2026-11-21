@@ -1,13 +1,13 @@
 # ScholarGraph MCP Server
 
-Exposes ScholarGraph's academic search capabilities as MCP tools, making them available in Claude Desktop, Cursor, and any other MCP-compatible client.
+Exposes ScholarGraph's open academic search capabilities as MCP tools, making them available in Claude Desktop, Cursor, and any other MCP-compatible client.
 
 ## Tools
 
 | Tool | Description |
 |---|---|
-| `search_papers` | Keyword + filter search over Semantic Scholar's 200M+ paper database |
-| `get_paper` | Fetch full metadata for a paper by Semantic Scholar ID |
+| `search_papers` | Keyword + filter search over federated open-access academic literature (OpenAlex + arXiv, 250M+ papers) |
+| `get_paper` | Fetch full metadata for a paper by canonical ID |
 | `forward_snowball` | Find papers that *cite* a given paper (recent follow-on work) |
 | `backward_snowball` | Find papers *cited by* a given paper (foundational references) |
 
@@ -20,15 +20,13 @@ cd mcp
 uv sync
 ```
 
-### 2. Set your Semantic Scholar API key
+### 2. Configuration
 
-The server reads from `backend/.env` automatically if you run it from the project root. Alternatively, set the environment variable directly:
+The server reads from `backend/.env` automatically. Academic search natively queries OpenAlex and arXiv with zero API keys required. An optional `S2_API_KEY` can be provided for fallback queries:
 
 ```bash
 export S2_API_KEY=your_key_here
 ```
-
-A free S2 API key can be obtained at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api). The server works without a key but at lower rate limits.
 
 ### 3. Connect to Claude Desktop
 

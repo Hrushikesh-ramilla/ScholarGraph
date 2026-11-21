@@ -32,7 +32,7 @@ function ButtonGroup({
         variant="outline"
         className={cn(
           "rounded-l-md rounded-r-none border-r-[0px]",
-          showingState ? "text-black" : "bg-white",
+          showingState ? "bg-accent text-accent-foreground" : "bg-card text-foreground",
         )}
         size="sm"
         onClick={handleShowState}
@@ -43,7 +43,7 @@ function ButtonGroup({
         variant="outline"
         className={cn(
           "rounded-l-none rounded-r-md border-l-[0px]",
-          showingDescription ? "text-black" : "bg-white",
+          showingDescription ? "bg-accent text-accent-foreground" : "bg-card text-foreground",
         )}
         size="sm"
         onClick={handleShowDescription}
@@ -115,7 +115,7 @@ export function ThreadActionsView({
             <Button
               size="sm"
               variant="outline"
-              className="flex items-center gap-1 bg-white"
+              className="flex items-center gap-1 bg-card text-foreground border-border hover:bg-accent"
               onClick={handleOpenInStudio}
             >
               Studio
@@ -133,7 +133,7 @@ export function ThreadActionsView({
       <div className="flex flex-row gap-2 items-center justify-start w-full">
         <Button
           variant="outline"
-          className="text-gray-800 border-gray-500 font-normal bg-white"
+          className="text-foreground border-border font-normal bg-card hover:bg-accent"
           onClick={handleResolve}
           disabled={actionsDisabled}
         >
@@ -142,7 +142,7 @@ export function ThreadActionsView({
         {ignoreAllowed && (
           <Button
             variant="outline"
-            className="text-gray-800 border-gray-500 font-normal bg-white"
+            className="text-foreground border-border font-normal bg-card hover:bg-accent"
             onClick={handleIgnore}
             disabled={actionsDisabled}
           >

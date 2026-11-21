@@ -4,10 +4,10 @@ from langchain.chat_models import init_chat_model
 from langchain.messages import SystemMessage
 from langgraph.graph import START, END, StateGraph
 from langgraph.prebuilt import ToolNode
-from app.tools.search import s2_search_papers, tavily_research_overview, forward_snowball, backward_snowball
+from app.tools.search import s2_search_papers, google_search_grounding, tavily_research_overview, forward_snowball, backward_snowball
 from app.core.config import settings
 from app.agent.utils import get_paper_info_text
-from rerankers import Reranker, Document
+from flashrank import Ranker, RerankRequest
 from app.core.schema import S2Paper
 from typing import List, Annotated, Union
 from langchain.agents import AgentState
@@ -20,20 +20,11 @@ MAX_PAPER_LIST_LENGTH = 20
 
 model = init_chat_model(model=settings.PF_AGENT_MODEL_NAME)
 
-tools = [tavily_research_overview, s2_search_papers, forward_snowball, backward_snowball]
+tools = [google_search_grounding, s2_search_papers, forward_snowball, backward_snowball]
 search_agent_model = model.bind_tools(tools)
 
-# Initialize Cohere reranker
-if not settings.COHERE_API_KEY:
-    logger.warning("COHERE_API_KEY not set. Reranking will be skipped.")
-    ranker = None
-else:
-    try:
-        ranker = Reranker("cohere", api_key=settings.COHERE_API_KEY)
-        logger.info("Cohere reranker initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize Cohere reranker: %s", e)
-        ranker = None
+# Initialize FlashRank in-process ONNX neural cross-encoder
+ranker = Ranker(model_name="ms-marco-TinyBERT-L-2-v2", cache_dir="./cache")
 
 
 class Replace:
@@ -62,10 +53,10 @@ async def search_agent_node(state: SearchAgentState):
     Your goal is to utilize the provided tools to help user find the most relevant papers to the user query.
 
     You have access to multiple search methods:
-    1. General web search (tavily_research_overview): Use this when the research topic is general or unfamiliar.
-       This helps you understand the research landscape and identify famous/seminal papers you shouldn't miss.
+    1. Google Search Grounding (google_search_grounding): Use this when the research topic is general or unfamiliar.
+       This helps you understand the research landscape and identify seminal papers using live web grounding.
 
-    2. Academic database search (s2_search_papers): Search Semantic Scholar's database of 200M+ papers.
+    2. Academic database search (s2_search_papers): Search open academic database (OpenAlex + arXiv, 250M+ papers).
        Use keyword queries, filters by year, venue, citation count, etc. to find relevant papers.
 
     3. Citation chasing tools:
@@ -108,22 +99,18 @@ async def rerank_node(state: SearchAgentState):
         logger.warning("Skipping rerank: no query provided")
         return {"papers": Replace(papers[:MAX_PAPER_LIST_LENGTH]), "iter": iter}
 
-    if ranker is None:
-        logger.warning("Skipping rerank: COHERE_API_KEY not set")
-        return {"papers": Replace(papers[:MAX_PAPER_LIST_LENGTH]), "iter": iter}
-
     try:
-        docs = [
-            Document(
-                text=f"Title: {p.title or 'No title'}\nAbstract: {p.abstract or 'No abstract'}\nAuthors: {p.authors or []}",
-                doc_id=str(p.paperId),
-                metadata=p.model_dump(),
-            )
+        passages = [
+            {
+                "id": str(p.paperId),
+                "text": f"Title: {p.title or ''}\nAbstract: {p.abstract or ''}",
+                "meta": p.model_dump(),
+            }
             for p in papers
         ]
-        logger.debug("Reranking %d papers with query: %s...", len(docs), user_query[:50])
-        reranked = await asyncio.to_thread(ranker.rank, query=user_query, docs=docs)
-        final_papers = [S2Paper.model_validate(m.document.metadata) for m in reranked.top_k(k=MAX_PAPER_LIST_LENGTH)]
+        logger.debug("Reranking %d papers with query: %s...", len(passages), user_query[:50])
+        reranked = ranker.rerank(RerankRequest(query=user_query, passages=passages))
+        final_papers = [S2Paper.model_validate(r["meta"]) for r in reranked[:MAX_PAPER_LIST_LENGTH]]
         logger.info("Reranking successful: %d papers", len(final_papers))
     except Exception as e:
         logger.error("Reranking failed: %s: %s", type(e).__name__, e)

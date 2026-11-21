@@ -38,7 +38,7 @@ function ArgsRenderer({ args }: { args: Record<string, any> }) {
             <p className="text-sm leading-[18px] text-gray-600 text-wrap">
               {prettifyText(k)}:
             </p>
-            <span className="text-[13px] leading-[18px] text-black bg-zinc-100 rounded-xl p-3 w-full max-w-full">
+            <span className="text-[13px] leading-[18px] text-foreground bg-secondary/60 border border-border rounded-xl p-3 w-full max-w-full">
               <MarkdownText>{value}</MarkdownText>
             </span>
           </div>
@@ -104,9 +104,9 @@ function ResponseComponent({
   };
 
   return (
-    <div className="flex flex-col gap-4 p-6 items-start w-full rounded-xl border-[1px] border-gray-300">
+    <div className="flex flex-col gap-4 p-6 items-start w-full rounded-xl border-[1px] border-border bg-card">
       <div className="flex items-center justify-between w-full">
-        <p className="font-semibold text-black text-base">
+        <p className="font-semibold text-foreground text-base">
           Respond to assistant
         </p>
         <ResetButton
@@ -251,9 +251,9 @@ function EditAndOrAcceptComponent({
   };
 
   return (
-    <div className="flex flex-col gap-4 items-start w-full p-6 rounded-lg border-[1px] border-gray-300">
+    <div className="flex flex-col gap-4 items-start w-full p-6 rounded-lg border-[1px] border-border bg-card">
       <div className="flex items-center justify-between w-full">
-        <p className="font-semibold text-black text-base">{header}</p>
+        <p className="font-semibold text-foreground text-base">{header}</p>
         <ResetButton handleReset={handleReset} />
       </div>
 

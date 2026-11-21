@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     LANGCHAIN_PROJECT: str = ""
     LANGCHAIN_ENDPOINT: str = ""
 
-    EMBEDDING_MODEL_NAME: str = "models/text-embedding-004"
+    EMBEDDING_MODEL_NAME: str = "models/gemini-embedding-001"
 
     SUPERVISOR_MODEL_NAME: str = "google_genai:gemini-3-flash-preview"
     PF_AGENT_MODEL_NAME: str = "google_genai:gemini-3.5-flash-lite"
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
 
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
-    QDRANT_VECTOR_SIZE: int = 768
+    QDRANT_VECTOR_SIZE: int = 3072
     QDRANT_COLLECTION: str = "papers"
     QDRANT_DISTANCE: str = "COSINE"
 
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
 
     GROBID_SERVER_URL: str = "http://localhost:8070"
 
-    CLERK_JWKS_URL: str = ""  # only required by the LangGraph backend, not the Celery worker
+    GOOGLE_JWKS_URL: str = "https://www.googleapis.com/oauth2/v3/certs"
     DISABLE_AUTH: bool = False
 
     def model_post_init(self, __context: Any) -> None:

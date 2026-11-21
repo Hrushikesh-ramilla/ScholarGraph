@@ -1,7 +1,7 @@
 [project]
 name = "scholargraph-mcp"
 version = "0.1.0"
-description = "MCP server exposing ScholarGraph academic search tools (Semantic Scholar + citation graph)"
+description = "MCP server exposing ScholarGraph academic search tools (OpenAlex + arXiv federated retrieval)"
 requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.0.0",

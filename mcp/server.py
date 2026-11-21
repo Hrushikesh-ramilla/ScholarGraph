@@ -1,13 +1,13 @@
 """
 ScholarGraph MCP Server
 
-Exposes Semantic Scholar academic search tools via the Model Context Protocol.
+Exposes open academic search tools (OpenAlex + arXiv + Semantic Scholar fallback) via the Model Context Protocol.
 Connect this to Claude Desktop, Cursor, or any MCP-compatible client to give
-your AI assistant access to 200M+ academic papers and citation graph traversal.
+your AI assistant access to 250M+ academic papers and citation graph traversal.
 
 Tools:
-  search_papers      — keyword + filter search over Semantic Scholar
-  get_paper          — fetch full metadata for a paper by S2 ID
+  search_papers      — keyword + filter search over federated open-access academic literature
+  get_paper          — fetch full metadata for a paper by ID
   forward_snowball   — find papers that cite a given paper (recent follow-on work)
   backward_snowball  — find papers cited by a given paper (foundational references)
 """
@@ -36,7 +36,7 @@ _PAPER_FIELDS = (
 mcp = FastMCP(
     "ScholarGraph Academic Search",
     instructions=(
-        "Tools for searching academic papers on Semantic Scholar (200M+ papers). "
+        "Tools for searching academic papers across OpenAlex, arXiv, and Semantic Scholar (250M+ papers). "
         "Use search_papers to find papers by keyword, get_paper to fetch details "
         "by ID, forward_snowball to find citing papers, and backward_snowball to "
         "find referenced papers."

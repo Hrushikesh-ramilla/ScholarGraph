@@ -100,7 +100,7 @@ function StateViewRecursive(props: StateViewRecursiveProps) {
     const valueArray = props.value as unknown[];
     return (
       <div className="flex flex-row gap-1 items-start justify-start w-full">
-        <span className="font-normal text-black">[</span>
+        <span className="font-normal text-foreground">[</span>
         {valueArray.map((item, idx) => {
           const itemRenderValue = baseMessageObject(item);
           return (
@@ -110,12 +110,12 @@ function StateViewRecursive(props: StateViewRecursiveProps) {
             >
               <StateViewRecursive value={itemRenderValue} />
               {idx < valueArray?.length - 1 && (
-                <span className="text-black font-normal">,&nbsp;</span>
+                <span className="text-foreground font-normal">,&nbsp;</span>
               )}
             </div>
           );
         })}
-        <span className="font-normal text-black">]</span>
+        <span className="font-normal text-foreground">]</span>
       </div>
     );
   }
@@ -154,7 +154,7 @@ function HasContentsEllipsis({ onClick }: { onClick?: () => void }) {
       onClick={onClick}
       className={cn(
         "font-mono text-[10px] leading-3 p-[2px] rounded-md",
-        "bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-800",
+        "bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground",
         "transition-colors ease-in-out cursor-pointer",
         "-translate-y-[2px] inline-block",
       )}
@@ -192,13 +192,13 @@ export function StateViewObject(props: StateViewProps) {
       >
         <div
           onClick={() => setExpanded((prev) => !prev)}
-          className="w-5 h-5 flex items-center justify-center hover:bg-gray-100 text-gray-500 hover:text-black rounded-md transition-colors ease-in-out cursor-pointer"
+          className="w-5 h-5 flex items-center justify-center hover:bg-secondary text-muted-foreground hover:text-foreground rounded-md transition-colors ease-in-out cursor-pointer"
         >
           <ChevronRight className="w-4 h-4" />
         </div>
       </motion.div>
       <div className="flex flex-col gap-1 items-start justify-start w-full">
-        <p className="text-black font-normal">
+        <p className="text-foreground font-normal">
           {prettifyText(props.keyName)}{" "}
           {!expanded && (
             <HasContentsEllipsis onClick={() => setExpanded((prev) => !prev)} />
